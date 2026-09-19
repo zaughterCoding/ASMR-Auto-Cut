@@ -1,0 +1,28 @@
+[project]
+name = "asmr-auto-cut"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "pydantic>=2.8",
+  "soundfile>=0.12",
+  "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2"]
+ml = ["torch>=2.3", "silero-vad>=5.1"]
+
+[project.scripts]
+asmr-auto-cut = "asmr_auto_cut.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["asmr_auto_cut*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

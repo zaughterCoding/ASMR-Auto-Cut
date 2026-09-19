@@ -1,0 +1,29 @@
+# 内部设计文档与实施计划，不纳入版本管理
+docs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 生成产物：项目数据（媒体、分析中间产物、导出结果）
+data/
+
+# Node / 前端
+node_modules/
+dist/
+.vite/
+
+# Tauri / Rust
+app/src-tauri/target/
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
