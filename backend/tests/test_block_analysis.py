@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import soundfile as sf
 
 from asmr_auto_cut.analysis.activity import detect_inactive_intervals
@@ -90,6 +91,33 @@ def test_block_analysis_matches_full_when_block_size_is_not_a_multiple(tmp_path)
     ]
     # 用例本身要有意义：得确认这次真的产生了低活动区间
     assert expected_inactive
+
+
+def test_block_analysis_matches_full_detection_under_adaptive_threshold(tmp_path):
+    """自适应阈值下分块与整段也必须一致。
+
+    阈值是按**全部**帧的低分位算出来的，所以两条路径必须喂进同一组帧才能得到
+    同一个判据。分块那边如果拿半截录音去算分位，阈值就会偏，切点跟着变——而
+    这种偏差在界面上看不出来。
+    """
+    path = tmp_path / "audio.wav"
+    sample_rate = 10
+    audio = np.concatenate([
+        np.full(300, 0.0008, dtype="float32"),
+        np.full(300, 0.5, dtype="float32"),
+    ])
+    _write(path, audio, sample_rate)
+    config = AnalysisConfig(inactive_frame_seconds=1.0, inactive_min_duration=20.0)
+
+    result = analyze_audio_blocks(path, config, points_per_second=1, block_seconds=1.0)
+    expected = detect_inactive_intervals(audio, sample_rate, config)
+
+    assert [(item.start, item.end) for item in result.inactive_intervals] == [
+        (item.start, item.end) for item in expected
+    ]
+    assert result.inactive_threshold is not None
+    # 取的是这条录音自己的底噪（0.0008），不是那个写死的 0.004
+    assert result.inactive_threshold.value == pytest.approx(0.0008, rel=1e-4)
 
 
 def test_trailing_inactive_interval_ends_at_audio_end(tmp_path):

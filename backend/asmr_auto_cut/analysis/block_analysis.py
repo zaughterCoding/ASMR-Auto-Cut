@@ -6,7 +6,12 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from asmr_auto_cut.analysis.activity import InactiveTracker, frame_rms, frame_size_for
+from asmr_auto_cut.analysis.activity import (
+    InactiveThreshold,
+    InactiveTracker,
+    frame_rms,
+    frame_size_for,
+)
 from asmr_auto_cut.analysis.waveform import WaveformPoint, samples_per_point, waveform_point
 from asmr_auto_cut.config import AnalysisConfig
 from asmr_auto_cut.timeline.intervals import RawInterval
@@ -24,6 +29,9 @@ class BlockAnalysisResult:
     waveform: list[WaveformPoint]
     inactive_intervals: list[RawInterval]
     sample_rate: int
+    #: 静默判据最后取的值。默认 None 是为了让只关心波形和区间、不关心判据的
+    #: 调用方（主要是测试里的替身）不必构造它。
+    inactive_threshold: InactiveThreshold | None = None
 
 
 #: 一次分析最多往进度里报这么多次。块数更多的长录音按比例跳着报。
@@ -131,8 +139,11 @@ def analyze_audio_blocks(
         tracker.feed(frame_rms(frame_carry), frame_start / sample_rate)
 
     total_duration = total_samples / sample_rate if sample_rate > 0 else 0.0
+    # 先收口再取判据：阈值是 finish() 里按全部帧算出来的，顺序反过来会拿到 None。
+    inactive_intervals = tracker.finish(total_duration)
     return BlockAnalysisResult(
         waveform=waveform,
-        inactive_intervals=tracker.finish(total_duration),
+        inactive_intervals=inactive_intervals,
         sample_rate=sample_rate,
+        inactive_threshold=tracker.threshold,
     )

@@ -98,6 +98,14 @@ def analyze_source(
     )
     save_waveform_json(project_dir / "waveform.json", block_result.waveform)
 
+    # 静默阈值被安全阀夹住时把原因说出来。夹紧本身是正常行为（说明这条录音
+    # 要么几乎没有静音、要么几乎全是数字静音），但用户看到的只是「切得比预期
+    # 少」或「切得比预期多」，不说明原因就只能靠猜。没有夹紧时不发这条。
+    if block_result.inactive_threshold is not None:
+        note = block_result.inactive_threshold.note
+        if note is not None:
+            _report(progress, "analyze_blocks", note, 3, total)
+
     _report(progress, "detect_speech", "正在检测人声", 4, total)
     speech_intervals = detect_speech_intervals(wav_path)
     wav_path.unlink()
