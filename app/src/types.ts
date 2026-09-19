@@ -30,3 +30,22 @@ export interface WaveformPoint {
   peak: number;
   rms: number;
 }
+
+export type OperationName = "analyze" | "export";
+
+export interface OperationProgress {
+  type: "progress";
+  operation: OperationName;
+  phase: string;
+  message: string;
+  current: number;
+  total: number;
+  percent: number;
+}
+
+export interface BackendResultEvent {
+  type: "result";
+  operation: OperationName;
+  project_path: string | null;
+  output_path: string | null;
+}
