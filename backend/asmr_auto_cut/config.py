@@ -44,3 +44,35 @@ class AnalysisConfig(BaseModel):
     inactive_rms_headroom_db: float = Field(default=25.0, gt=0)
 
     inactive_min_duration: float = Field(default=20.0, ge=0)
+
+    # --- 人声检测（Silero VAD）------------------------------------------
+    #
+    # 这几项以前一个都没传，全用 Silero 的默认值。默认值是按「电话/会议录音」
+    # 调的：说完一句会停顿几百毫秒，所以 min_silence_duration_ms=100 就够把
+    # 两句话分开。ASMR 这边不是这个形态——
+    #
+    #   * 主播可能一边耳语一边喘气，句间停顿短，默认值会把一句话切成好几段，
+    #     而每段都会被当成独立的 talk 区间切掉，中间夹着的 keep 碎片还短到
+    #     触发 min_keep_duration 的合并规则，最后连成一大片（实测 111 秒里切出
+    #     7 段 1.2~1.7 秒的碎片，而人工听是 4 段 8~10 秒的连续说话）。
+    #   * 反过来，慢速耳语的能量低，threshold=0.5 可能整段漏掉（实测残留废话
+    #     9.8 分钟，是误剪量的 10 倍）。
+    #
+    # 这一组就是给上面两个方向留的旋钮，具体取值靠
+    # data/labeling/_sweep_vad.py 在已标注的片段上扫出来，不要凭感觉改。
+    #: 语音概率高于它才算说话。调低 = 更激进地切（能捞回漏掉的耳语，
+    #: 代价是可能误剪）。调高 = 更保守。Silero 默认 0.5。
+    vad_threshold: float = Field(default=0.5, gt=0, lt=1)
+
+    #: 短于这个时长的语音段直接丢掉。调大能压掉碎片，但会连同真正的短促
+    #: 语气词一起扔掉。注意 Silero 里小于它的段是被**丢弃**而不是合并。
+    vad_min_speech_duration_ms: int = Field(default=250, ge=0)
+
+    #: 语音段之间静默超过这个时长才算断开。调大能把被停顿切碎的一句话重新
+    #: 连成一段。Silero 默认 100。
+    vad_min_silence_duration_ms: int = Field(default=100, ge=0)
+
+    #: 每个语音段两端各补这么长。Silero 默认 30。这一项和上面的
+    #: speech_padding_before / after 不是一回事：这里补在「合并成区间之前」，
+    #: 影响两段会不会被算成相连；那两个补在「区间已经定了之后」，只改边界。
+    vad_speech_pad_ms: int = Field(default=30, ge=0)

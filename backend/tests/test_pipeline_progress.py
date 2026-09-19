@@ -13,7 +13,7 @@ def test_analyze_source_reports_expected_phases(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline, "probe_duration", lambda path: 10.0)
     monkeypatch.setattr(pipeline, "extract_analysis_audio", lambda source, wav_path: wav_path.write_bytes(b"wav"))
     monkeypatch.setattr(pipeline, "save_waveform_json", lambda path, waveform: path.write_text("[]", encoding="utf-8"))
-    monkeypatch.setattr(pipeline, "detect_speech_intervals", lambda wav_path: [])
+    monkeypatch.setattr(pipeline, "detect_speech_intervals", lambda wav_path, config: [])
 
     def fake_analyze_audio_blocks(wav_path, config, progress=None):
         # 顺手代一次分块回调：它在实际实现里是穿在同一条 progress 通道上的，
@@ -57,7 +57,7 @@ def test_analyze_source_still_runs_without_progress(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline, "probe_duration", lambda path: 10.0)
     monkeypatch.setattr(pipeline, "extract_analysis_audio", lambda source, wav_path: wav_path.write_bytes(b"wav"))
     monkeypatch.setattr(pipeline, "save_waveform_json", lambda path, waveform: path.write_text("[]", encoding="utf-8"))
-    monkeypatch.setattr(pipeline, "detect_speech_intervals", lambda wav_path: [])
+    monkeypatch.setattr(pipeline, "detect_speech_intervals", lambda wav_path, config: [])
     monkeypatch.setattr(
         pipeline,
         "analyze_audio_blocks",

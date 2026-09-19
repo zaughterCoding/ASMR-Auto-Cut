@@ -107,7 +107,7 @@ def analyze_source(
             _report(progress, "analyze_blocks", note, 3, total)
 
     _report(progress, "detect_speech", "正在检测人声", 4, total)
-    speech_intervals = detect_speech_intervals(wav_path)
+    speech_intervals = detect_speech_intervals(wav_path, config)
     wav_path.unlink()
 
     _report(progress, "build_timeline", "正在生成时间轴", 5, total)
