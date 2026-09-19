@@ -13,7 +13,19 @@ venv/
 .ruff_cache/
 
 # 生成产物：项目数据（媒体、分析中间产物、导出结果）
-data/
+data/*
+
+# 例外：人工标注的工具链是代码，进版本管理。
+# 逐层反选——git 不会进入被排除的目录，所以父目录必须一层层放行。
+# 不包含：_materials.local.json（本地媒体库路径）、archive/（一次性调查脚本）、
+# 以及各素材目录（片段、标注结果、README，都含个人数据）。
+!data/labeling/
+data/labeling/*
+!data/labeling/_tools/
+data/labeling/_tools/*
+!data/labeling/_tools/*.py
+!data/labeling/_tools/*.example.json
+!data/labeling/_tools/README.md
 
 # Node / 前端
 node_modules/

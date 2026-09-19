@@ -1,0 +1,14 @@
+{
+  "default": "example_20260101",
+  "materials": {
+    "example_20260101": {
+      "title": "Example recording, 70 minutes",
+      "lang": "ja",
+      "src": "D:/media/example_20260101.mp4",
+      "plan": { "keep": 40, "talk": 50, "inactive": 10 },
+      "seed": 20260101,
+      "min_region_seconds": 1.0,
+      "note": "自由文本，随便写。只在 _inspect.py 里显示，不参与计算。"
+    }
+  }
+}
