@@ -6,6 +6,8 @@ interface Props {
   waveform: WaveformPoint[] | null;
   selectedSegmentId: string | null;
   onSelectSegment: (segmentId: string) => void;
+  /** 当前播放位置，null 表示没有在播放。 */
+  playheadSeconds: number | null;
 }
 
 const segmentColors = {
@@ -65,6 +67,7 @@ export function Timeline({
   waveform,
   selectedSegmentId,
   onSelectSegment,
+  playheadSeconds,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -111,6 +114,12 @@ export function Timeline({
           );
         })}
       </div>
+      {playheadSeconds !== null && duration > 0 && (
+        <div
+          className="timeline-playhead"
+          style={{ left: `${(playheadSeconds / duration) * 100}%` }}
+        />
+      )}
     </section>
   );
 }

@@ -185,6 +185,26 @@ body {
   border-color: rgba(255, 255, 255, 0.55);
 }
 
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 120px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+/* ---- 播放器 ---- */
+
+.player {
+  margin-top: 12px;
+}
+
+.player audio {
+  display: block;
+  width: 100%;
+}
+
 /* ---- 片段检查器 ---- */
 
 .inspector-range {

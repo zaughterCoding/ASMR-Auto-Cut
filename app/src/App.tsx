@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AudioPlayer } from "./components/AudioPlayer";
 import { SegmentInspector } from "./components/SegmentInspector";
 import { SummaryPanel } from "./components/SummaryPanel";
 import { Timeline } from "./components/Timeline";
@@ -21,7 +22,11 @@ const demoProject: ProjectState = {
 
 export function App() {
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+  const [seekSeconds, setSeekSeconds] = useState<number | null>(null);
+  const [playheadSeconds, setPlayheadSeconds] = useState<number | null>(null);
+
   const project = useProjectStore((state) => state.project);
+  const projectPath = useProjectStore((state) => state.projectPath);
   const waveform = useProjectStore((state) => state.waveform);
   const setProject = useProjectStore((state) => state.setProject);
   const setWaveform = useProjectStore((state) => state.setWaveform);
@@ -30,11 +35,23 @@ export function App() {
   const selectedSegment =
     project?.segments.find((segment) => segment.id === selectedSegmentId) ?? null;
 
+  // 示例项目没有真实文件，只有真正载入的项目才有可播放的源。
+  const sourcePath = projectPath ? project?.source.path ?? null : null;
+
   const loadDemo = () => {
     setProject(demoProject);
     // 示例项目没有真实音频，清掉上一条波形，避免和示例时间轴对不上
     setWaveform(null);
     setSelectedSegmentId(null);
+    setSeekSeconds(null);
+    setPlayheadSeconds(null);
+  };
+
+  const selectSegment = (segmentId: string) => {
+    const segment = project?.segments.find((item) => item.id === segmentId);
+    setSelectedSegmentId(segmentId);
+    setSeekSeconds(segment?.start ?? null);
+    setPlayheadSeconds(segment?.start ?? null);
   };
 
   return (
@@ -46,7 +63,13 @@ export function App() {
             project={project}
             waveform={waveform}
             selectedSegmentId={selectedSegmentId}
-            onSelectSegment={setSelectedSegmentId}
+            onSelectSegment={selectSegment}
+            playheadSeconds={playheadSeconds}
+          />
+          <AudioPlayer
+            sourcePath={sourcePath}
+            seekSeconds={seekSeconds}
+            onTimeUpdate={setPlayheadSeconds}
           />
         </div>
         <div className="workspace-side">
