@@ -11,6 +11,24 @@ class WaveformPoint(BaseModel):
     rms: float
 
 
+def samples_per_point(sample_rate: int, points_per_second: int) -> int:
+    """一个波形点覆盖多少采样点。
+
+    单独抽出来是给分块分析用的：分块要按同样的单位切，才能和整段一次算的结果
+    逐点对齐。这个除法写在两处早晚会改歪一处，所以只留这一份。
+    """
+    return max(1, sample_rate // points_per_second)
+
+
+def waveform_point(chunk: np.ndarray, time: float) -> WaveformPoint:
+    """把一段采样收成一个波形点。分块分析和整段分析共用，保证两边算式一致。"""
+    return WaveformPoint(
+        time=time,
+        peak=float(np.max(np.abs(chunk))),
+        rms=float(np.sqrt(np.mean(np.square(chunk)))),
+    )
+
+
 def build_waveform(
     audio: np.ndarray,
     sample_rate: int,
@@ -18,15 +36,13 @@ def build_waveform(
 ) -> list[WaveformPoint]:
     if audio.size == 0:
         return []
-    samples_per_point = max(1, sample_rate // points_per_second)
+    step = samples_per_point(sample_rate, points_per_second)
     points: list[WaveformPoint] = []
-    for start in range(0, len(audio), samples_per_point):
-        chunk = audio[start : start + samples_per_point]
+    for start in range(0, len(audio), step):
+        chunk = audio[start : start + step]
         if chunk.size == 0:
             continue
-        peak = float(np.max(np.abs(chunk)))
-        rms = float(np.sqrt(np.mean(np.square(chunk))))
-        points.append(WaveformPoint(time=start / sample_rate, peak=peak, rms=rms))
+        points.append(waveform_point(chunk, start / sample_rate))
     return points
 
 

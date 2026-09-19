@@ -1,11 +1,10 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from asmr_auto_cut.analysis.activity import detect_inactive_intervals
+from asmr_auto_cut.analysis.block_analysis import analyze_audio_blocks
 from asmr_auto_cut.analysis.speech import detect_speech_intervals
-from asmr_auto_cut.analysis.waveform import build_waveform, save_waveform_json
+from asmr_auto_cut.analysis.waveform import save_waveform_json
 from asmr_auto_cut.config import AnalysisConfig
-from asmr_auto_cut.media.audio import load_mono_audio
 from asmr_auto_cut.media.ffmpeg import extract_analysis_audio, probe_duration
 from asmr_auto_cut.models import MediaSource, ProjectState
 from asmr_auto_cut.progress import ProgressEvent
@@ -15,7 +14,12 @@ from asmr_auto_cut.timeline.refine import refine_segments
 
 #: 分析的阶段总数。进度条要算百分比就得先知道总数，所以固定写死在这里，
 #: 每个阶段报数时都传它。改阶段顺序或增删阶段时这里要一起改。
-ANALYZE_PHASES = 8
+#:
+#: 0.2.0 从 8 降到 6：波形和低活动检测现在是同一趟分块扫描出来的（见
+#: block_analysis），「载入音频 / 生成波形 / 检测低活动」这三步实际只剩一步，
+#: 再拆成三个阶段报就是在骗进度条。这一步内部会逐块报细分进度，所以对用户来说
+#: 反馈反而更密了。
+ANALYZE_PHASES = 6
 
 
 def _report(
@@ -76,27 +80,38 @@ def analyze_source(
     wav_path = project_dir / "analysis.wav"
     _report(progress, "extract_audio", "正在提取分析音频", 2, total)
     extract_analysis_audio(source, wav_path)
-    _report(progress, "load_audio", "正在载入音频", 3, total)
-    audio, sample_rate = load_mono_audio(wav_path)
-    _report(progress, "build_waveform", "正在生成波形", 4, total)
-    waveform = build_waveform(audio, sample_rate)
-    save_waveform_json(project_dir / "waveform.json", waveform)
-    _report(progress, "detect_speech", "正在检测人声", 5, total)
+
+    # 波形和低活动来自同一趟分块扫描：整段读进内存等于同时压着原始音频和派生
+    # 结果两份大数组，而长录音光音频本身就是每小时的量级。这一趟内部逐块报数，
+    # 所以它虽然是「一个阶段」，用户在进度条上看到的更新反而是最密的。
+    _report(progress, "analyze_blocks", "正在分析音频", 3, total)
+    block_result = analyze_audio_blocks(
+        wav_path,
+        config,
+        progress=lambda done, blocks: _report(
+            progress,
+            "analyze_blocks",
+            f"正在分析音频（第 {done}/{blocks} 块）",
+            3,
+            total,
+        ),
+    )
+    save_waveform_json(project_dir / "waveform.json", block_result.waveform)
+
+    _report(progress, "detect_speech", "正在检测人声", 4, total)
     speech_intervals = detect_speech_intervals(wav_path)
-    _report(progress, "detect_inactive", "正在检测低活动片段", 6, total)
-    inactive_intervals = detect_inactive_intervals(audio, sample_rate, config)
     wav_path.unlink()
 
-    _report(progress, "build_timeline", "正在生成时间轴", 7, total)
+    _report(progress, "build_timeline", "正在生成时间轴", 5, total)
     state = assemble_project_state(
         project_id=project_dir.name,
         source_path=str(source),
         duration=duration,
         speech_intervals=speech_intervals,
-        inactive_intervals=inactive_intervals,
+        inactive_intervals=block_result.inactive_intervals,
         config=config,
     )
-    _report(progress, "save_project", "正在保存项目", 8, total)
+    _report(progress, "save_project", "正在保存项目", 6, total)
     save_project_state(project_dir / "project.json", state)
     save_project_state(project_dir / "segments.json", state)
     return state
