@@ -25,7 +25,9 @@ def test_build_keep_clips_uses_edited_actions():
 
 
 def test_clip_command_applies_fades_around_the_requested_window():
-    command = _clip_command("input.mp4", ExportClip(10.0, 40.0), "clip.mp4", DEFAULT_FADE_SECONDS)
+    command = _clip_command(
+        "input.mp4", ExportClip(10.0, 40.0), "clip.mp4", DEFAULT_FADE_SECONDS, "quality"
+    )
 
     # -ss/-to 必须在 -i 之前，才能走 input seek 且不整条解码
     assert command.index("-ss") < command.index("-i")
@@ -40,12 +42,14 @@ def test_clip_command_applies_fades_around_the_requested_window():
 
 def test_clip_command_clamps_fade_for_very_short_clips():
     # 20ms 的片段放不下两个 30ms 渐变，应各自收窄到半长，避免首尾重叠
-    command = _clip_command("input.mp4", ExportClip(5.0, 5.02), "clip.mp4", DEFAULT_FADE_SECONDS)
+    command = _clip_command(
+        "input.mp4", ExportClip(5.0, 5.02), "clip.mp4", DEFAULT_FADE_SECONDS, "quality"
+    )
     assert command[command.index("-af") + 1] == "afade=t=in:st=0:d=0.010,afade=t=out:st=0.010:d=0.010"
 
 
 def test_clip_command_without_fade_omits_the_filter():
-    command = _clip_command("input.mp4", ExportClip(0.0, 1.0), "clip.mp4", 0.0)
+    command = _clip_command("input.mp4", ExportClip(0.0, 1.0), "clip.mp4", 0.0, "quality")
     assert "-af" not in command
 
 

@@ -2,6 +2,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from asmr_auto_cut.media.ffmpeg import ensure_ffmpeg_available, run_command
 from asmr_auto_cut.models import ProjectState
@@ -10,6 +11,13 @@ from asmr_auto_cut.progress import ProgressEvent
 #: 每个 keep 段首尾的淡入淡出时长。接缝两侧波形不连续会产生爆音，
 #: 加一小段渐变压掉；0 表示不做处理（导出更快，但接缝可能可闻）。
 DEFAULT_FADE_SECONDS = 0.03
+
+#: quality 是 0.1.0 的原有行为，保持默认。
+#: fast 目前只做一件保守的事：去掉渐变。它不减少 ffmpeg 的调用次数，也不减少
+#: 临时文件——真正能省掉这些的做法（filter_complex 一次渲染再拼接）会逼着视频
+#: 轨重编码，而现在的 -c:v copy 原样透传正是导出容器能装下源视频编码的前提，
+#: 换掉它得连带重新验证一遍容器兼容性，不适合放在这一版里。
+ExportMode = Literal["quality", "fast"]
 
 
 @dataclass(frozen=True)
@@ -50,10 +58,12 @@ def _clip_command(
     clip: ExportClip,
     clip_path: Path,
     fade_seconds: float,
+    mode: ExportMode,
 ) -> list[str]:
     duration = clip.end - clip.start
     # 段落太短时把 fade 收窄到半长，避免首尾渐变互相重叠。
-    fade = min(fade_seconds, duration / 2)
+    # fast 模式直接归零，于是下面那段 -af 整段不生成。
+    fade = 0.0 if mode == "fast" else min(fade_seconds, duration / 2)
 
     # -ss/-to 放在 -i 之前配合默认的 -accurate_seek，音频能精确到采样点，
     # 且不必从头解码整条长录音。
@@ -88,6 +98,7 @@ def export_clean_media(
     state: ProjectState,
     output_path: Path,
     fade_seconds: float = DEFAULT_FADE_SECONDS,
+    mode: ExportMode = "quality",
     progress: Callable[[ProgressEvent], None] | None = None,
 ) -> Path:
     ensure_ffmpeg_available()
@@ -109,7 +120,7 @@ def export_clean_media(
         clip_files: list[Path] = []
         for index, clip in enumerate(clips):
             clip_path = temp_dir / f"clip_{index:06d}.mp4"
-            run_command(_clip_command(state.source.path, clip, clip_path, fade_seconds))
+            run_command(_clip_command(state.source.path, clip, clip_path, fade_seconds, mode))
             clip_files.append(clip_path)
             _report(
                 progress,

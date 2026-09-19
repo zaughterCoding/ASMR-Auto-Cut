@@ -1,16 +1,19 @@
 import sys
 from pathlib import Path
+from typing import cast
 
 import typer
 
 from asmr_auto_cut import __version__
 from asmr_auto_cut.analysis.pipeline import analyze_source
 from asmr_auto_cut.config import AnalysisConfig
-from asmr_auto_cut.export.ffmpeg_export import export_clean_media
+from asmr_auto_cut.export.ffmpeg_export import ExportMode, export_clean_media
 from asmr_auto_cut.progress import ResultEvent, emit_json_event
 from asmr_auto_cut.timeline.io import load_project_state
 
 app = typer.Typer(no_args_is_help=True)
+
+EXPORT_MODES = ("quality", "fast")
 
 
 def _enable_utf8_output() -> None:
@@ -71,14 +74,20 @@ def analyze(
 def export(
     segments_path: Path,
     output: Path = typer.Option(..., "--output"),
+    mode: str = typer.Option("quality", "--mode", help="Export mode: quality or fast."),
     progress_json: bool = typer.Option(False, "--progress-json"),
 ) -> None:
+    # 用 str + 手工校验而不是 Literal：typer 各版本对 Literal 的 choices 渲染和
+    # 报错行为不一致，这里只要一个稳定的、能自己写清楚错在哪的判断。
+    if mode not in EXPORT_MODES:
+        raise typer.BadParameter(f"mode must be one of {', '.join(sorted(EXPORT_MODES))}")
     if progress_json:
         _enable_utf8_output()
     state = load_project_state(segments_path, validate_source_exists=True)
     export_clean_media(
         state,
         output,
+        mode=cast(ExportMode, mode),
         progress=emit_json_event if progress_json else None,
     )
     if progress_json:
