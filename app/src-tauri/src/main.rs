@@ -56,6 +56,33 @@ fn analyze_source(source_path: String, project_dir: String) -> Result<String, St
     })
 }
 
+/// 项目数据的根目录，即设计文档 §14 的 `data/projects/`。
+///
+/// 前端拿不到仓库位置，只能由后端推。从当前目录往上找到同时含 `backend/` 和
+/// `app/` 的一层当作仓库根；`tauri dev` 的工作目录是 `app/src-tauri`，正好能命中。
+/// 找不到就退回到当前目录下的 `data/projects`，至少不会是错的相对路径。
+/// 用运行时查找而不是编译期常量，避免把开发机的绝对路径烧进二进制。
+fn projects_root() -> PathBuf {
+    if let Ok(configured) = std::env::var("ASMR_AUTO_CUT_DATA") {
+        return PathBuf::from(configured);
+    }
+    let current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    for candidate in current.ancestors() {
+        if candidate.join("backend").is_dir() && candidate.join("app").is_dir() {
+            return candidate.join("data").join("projects");
+        }
+    }
+    current.join("data").join("projects")
+}
+
+#[tauri::command]
+fn projects_root_path() -> String {
+    let root = projects_root();
+    // 让目录先存在，前端才好把它展示出来或往里放东西
+    let _ = std::fs::create_dir_all(&root);
+    root.to_string_lossy().to_string()
+}
+
 /// 读取项目目录下的 waveform.json 原始 JSON 文本。波形点数随录音时长增长，
 /// 前端按像素列聚合后再绘制，不逐点画。
 #[tauri::command]
@@ -91,12 +118,14 @@ fn export_project(project_path: String, output_path: String) -> Result<String, S
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             analyze_source,
             load_waveform,
             load_project,
             save_project,
-            export_project
+            export_project,
+            projects_root_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

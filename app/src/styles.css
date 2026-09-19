@@ -59,6 +59,24 @@ body {
   cursor: not-allowed;
 }
 
+.toolbar-spacer {
+  flex: 1;
+}
+
+.toolbar-ghost {
+  background: transparent !important;
+  color: var(--text-dim) !important;
+}
+
+/* ---- 状态栏 ---- */
+
+.statusbar {
+  padding: 6px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-dim);
+}
+
 /* ---- 主区域 ---- */
 
 .workspace {

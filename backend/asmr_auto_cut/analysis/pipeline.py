@@ -32,14 +32,21 @@ def assemble_project_state(
 
 def analyze_source(source: Path, project_dir: Path, config: AnalysisConfig) -> ProjectState:
     project_dir.mkdir(parents=True, exist_ok=True)
-    wav_path = project_dir / "analysis.wav"
     duration = probe_duration(source)
+
+    # analysis.wav 只是 VAD 和波形计算的中间产物，整条录音的体积可观
+    # （8 小时约 0.9GB），而 waveform.json 已经够画图，所以分析成功后删掉。
+    # 放在项目目录而不是 %TEMP%：默认临时目录在 C 盘，不能往那儿写大文件。
+    # unlink 放在调用之后而不是 finally 里：中途失败时把 wav 留在原地便于排查。
+    wav_path = project_dir / "analysis.wav"
     extract_analysis_audio(source, wav_path)
     audio, sample_rate = load_mono_audio(wav_path)
     waveform = build_waveform(audio, sample_rate)
     save_waveform_json(project_dir / "waveform.json", waveform)
     speech_intervals = detect_speech_intervals(wav_path)
     inactive_intervals = detect_inactive_intervals(audio, sample_rate, config)
+    wav_path.unlink()
+
     state = assemble_project_state(
         project_id=project_dir.name,
         source_path=str(source),

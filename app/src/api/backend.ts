@@ -15,6 +15,11 @@ function parseProjectState(raw: string): ProjectState {
   return state;
 }
 
+/** 项目数据根目录，由后端按仓库位置推导（设计文档 §14 的 data/projects/）。 */
+export async function projectsRootPath(): Promise<string> {
+  return invoke<string>("projects_root_path");
+}
+
 export async function analyzeSource(
   sourcePath: string,
   projectDir: string,
