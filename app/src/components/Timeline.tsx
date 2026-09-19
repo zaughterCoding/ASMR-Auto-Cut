@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { segmentColors, segmentOpacity } from "../timeline/segmentColors";
 import { drawWaveform } from "../timeline/waveformDrawing";
 import type { ProjectState, WaveformPoint } from "../types";
 
@@ -10,13 +11,6 @@ interface Props {
   /** 当前播放位置，null 表示没有在播放。 */
   playheadSeconds: number | null;
 }
-
-const segmentColors = {
-  asmr: "#2f9e44",
-  talk: "#e03131",
-  inactive: "#868e96",
-  uncertain: "#f08c00",
-};
 
 const WAVE_COLOR = "#8fd3c7";
 const WAVE_BACKGROUND = "#10131a";
@@ -70,7 +64,7 @@ export function Timeline({
                 width: `${width}%`,
                 // 切除段落压暗，保留段落用标签色标出
                 background: segmentColors[segment.label],
-                opacity: segment.action === "cut" ? 0.32 : 0.72,
+                opacity: segmentOpacity(segment.action),
                 borderColor: selected ? "#ffffff" : "transparent",
               }}
             />

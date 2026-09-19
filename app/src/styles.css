@@ -263,6 +263,94 @@ body {
   pointer-events: none;
 }
 
+/* ---- 缩放时间轴 ---- */
+
+.zoom-timeline {
+  position: relative;
+  height: 260px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0f121a;
+}
+
+.zoom-timeline.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.zoom-waveform {
+  display: block;
+  width: 100%;
+  height: 210px;
+}
+
+.zoom-segments {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.zoom-segment {
+  position: absolute;
+  bottom: 0;
+  height: 34px;
+  overflow: hidden;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.zoom-segment.selected {
+  border-color: #fff;
+}
+
+/* 缩放画布比概览高，播放头要跟着加长，否则停在半空 */
+.zoom-playhead {
+  height: 210px;
+}
+
+.zoom-editbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.zoom-editbar span {
+  min-width: 150px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-editbar button {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #232838;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.zoom-editbar button.active {
+  border-color: var(--accent);
+  background: #2b3a44;
+}
+
+.zoom-editbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .timeline-playhead {
   position: absolute;
   top: 0;

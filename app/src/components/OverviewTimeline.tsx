@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TimeRange } from "../timeline/timeRange";
 import { moveRange, normalizeRange } from "../timeline/timeRange";
+import { segmentColors, segmentOpacity } from "../timeline/segmentColors";
 import { findSegmentAt } from "../timeline/segmentView";
 import { drawWaveform } from "../timeline/waveformDrawing";
 import type { ProjectState, WaveformPoint } from "../types";
@@ -147,7 +148,13 @@ export function OverviewTimeline({
               key={segment.id}
               className={classes.join(" ")}
               title={`${segment.label} ${segment.action} ${segment.start.toFixed(1)}-${segment.end.toFixed(1)}s`}
-              style={{ left: `${left}%`, width: `${width}%` }}
+              style={{
+                left: `${left}%`,
+                width: `${width}%`,
+                background: segmentColors[segment.label],
+                opacity: segmentOpacity(segment.action),
+                borderColor: selected ? "#ffffff" : "transparent",
+              }}
             />
           );
         })}
