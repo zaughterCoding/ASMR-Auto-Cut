@@ -1,6 +1,10 @@
+from pathlib import Path
+
 import typer
 
 from asmr_auto_cut import __version__
+from asmr_auto_cut.analysis.pipeline import analyze_source
+from asmr_auto_cut.config import AnalysisConfig
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -12,3 +16,12 @@ def main(
     if version:
         typer.echo(__version__)
         raise typer.Exit()
+
+
+@app.command()
+def analyze(
+    source: Path,
+    project_dir: Path = typer.Option(..., "--project-dir"),
+) -> None:
+    state = analyze_source(source=source, project_dir=project_dir, config=AnalysisConfig())
+    typer.echo(f"Created project {state.project_id} with {len(state.segments)} segments")
