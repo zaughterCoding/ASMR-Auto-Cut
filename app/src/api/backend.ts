@@ -1,5 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ProjectState, WaveformPoint } from "../types";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { OperationProgress, ProjectState, WaveformPoint } from "../types";
+
+/**
+ * 订阅后端进度。事件由 Rust 侧在逐行读后端 stdout 时转发，名字要和那边
+ * run_backend_with_progress 里 emit 的字符串保持一致。
+ *
+ * 返回取消订阅的函数，调用方在组件卸载时必须调用它，否则热重载会累积监听器，
+ * 同一条进度被处理多次。
+ */
+export async function listenToBackendProgress(
+  handler: (progress: OperationProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<OperationProgress>("backend-progress", (event) => {
+    handler(event.payload);
+  });
+}
 
 /**
  * 后端命令统一返回 JSON 文本，在这里解析成 ProjectState。
