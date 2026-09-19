@@ -26,3 +26,6 @@ include = ["asmr_auto_cut*"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+# 临时目录放在项目内，避免落到 C 盘用户缓存；本机 C 盘的 pytest 临时根目录
+# (pytest-of-*) 权限已损坏，直接指向项目内可绕开。
+addopts = "--basetemp=.pytest_tmp"
