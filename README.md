@@ -230,13 +230,13 @@ cd app
 npm run tauri build
 ```
 
-Windows 上实测（release 编译 1 分 41 秒）：
+Windows 上实测（首次 release 编译 1 分 41 秒；依赖都编好之后再编 1 分 10 秒）：
 
 | 产物 | 大小 |
 |---|---|
-| `target/release/asmr-auto-cut.exe` | 8.7 MB |
-| `bundle/msi/ASMR Auto Cut_0.1.0_x64_en-US.msi` | 2.9 MB |
-| `bundle/nsis/ASMR Auto Cut_0.1.0_x64-setup.exe` | 1.9 MB |
+| `target/release/asmr-auto-cut.exe` | 8.8 MB |
+| `bundle/msi/ASMR Auto Cut_0.2.0_x64_en-US.msi` | 2.9 MB |
+| `bundle/nsis/ASMR Auto Cut_0.2.0_x64-setup.exe` | 1.9 MB |
 
 > ⚠️ **现在打出来的安装包不能开箱即用。** 它只装了界面外壳，没有带后端，也没有带
 > ffmpeg。目标机器上仍然需要自己准备：Python 3.11+、装好 `asmr-auto-cut` 后端包、
