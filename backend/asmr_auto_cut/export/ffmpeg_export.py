@@ -1,9 +1,8 @@
-import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from asmr_auto_cut.media.ffmpeg import ensure_ffmpeg_available
+from asmr_auto_cut.media.ffmpeg import ensure_ffmpeg_available, run_command
 from asmr_auto_cut.models import ProjectState
 
 #: 每个 keep 段首尾的淡入淡出时长。接缝两侧波形不连续会产生爆音，
@@ -81,12 +80,7 @@ def export_clean_media(
         clip_files: list[Path] = []
         for index, clip in enumerate(clips):
             clip_path = temp_dir / f"clip_{index:06d}.mp4"
-            subprocess.run(
-                _clip_command(state.source.path, clip, clip_path, fade_seconds),
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+            run_command(_clip_command(state.source.path, clip, clip_path, fade_seconds))
             clip_files.append(clip_path)
 
         list_path = temp_dir / "clips.txt"
@@ -94,7 +88,7 @@ def export_clean_media(
             "".join(f"file '{path.as_posix()}'\n" for path in clip_files),
             encoding="utf-8",
         )
-        subprocess.run(
+        run_command(
             [
                 "ffmpeg",
                 "-y",
@@ -107,9 +101,6 @@ def export_clean_media(
                 "-c",
                 "copy",
                 str(output_path),
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
+            ]
         )
     return output_path
