@@ -47,8 +47,14 @@ def build_waveform(
 
 
 def save_waveform_json(path: Path, points: list[WaveformPoint]) -> None:
+    """写紧凑 JSON，不缩进。
+
+    这份文件是给前端画图读的，没有任何人会去肉眼看它，而它随录音时长线性增长：
+    20 点/秒下 1 小时是 72000 个点，缩进要占约 5.1 MiB，紧凑之后约 3.5 MiB。
+    字段名保持 time/peak/rms 不变，前端 JSON.parse 出来的东西一模一样。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps([point.model_dump() for point in points], indent=2),
+        json.dumps([point.model_dump() for point in points], separators=(",", ":")),
         encoding="utf-8",
     )
