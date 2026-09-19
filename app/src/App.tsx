@@ -204,6 +204,18 @@ export function App() {
     setPlayheadSeconds(segment?.start ?? null);
   }
 
+  /**
+   * 拖动缩放时间轴上的倒三角：把播放起点挪到那个位置。
+   *
+   * 两个 setState 都要调。seekSeconds 是给播放器的（AudioPlayer 在它变化时写
+   * audio.currentTime），playheadSeconds 是给时间轴画播放头的。只设前者的话，
+   * 松手那一刻播放头会先退回旧位置，等播放器下一次回报时间才跳过去。
+   */
+  function seekTo(seconds: number) {
+    setSeekSeconds(seconds);
+    setPlayheadSeconds(seconds);
+  }
+
   return (
     <main className="app">
       <Toolbar
@@ -226,6 +238,7 @@ export function App() {
             selectedSegment={selectedSegment}
             onSelectSegment={selectSegment}
             onUpdateSegment={updateSegment}
+            onSeek={seekTo}
             playheadSeconds={playheadSeconds}
           />
           <AudioPlayer

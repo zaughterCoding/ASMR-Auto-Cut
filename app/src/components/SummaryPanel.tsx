@@ -1,3 +1,4 @@
+import { formatClock } from "../timeline/timeFormat";
 import type { ProjectState, SegmentLabel } from "../types";
 
 interface Props {
@@ -5,15 +6,6 @@ interface Props {
 }
 
 const LABELS: SegmentLabel[] = ["asmr", "talk", "inactive", "uncertain"];
-
-function formatSeconds(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const rest = total % 60;
-  const clock = `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
-  return hours > 0 ? `${hours}:${clock}` : clock;
-}
 
 export function SummaryPanel({ project }: Props) {
   if (!project) return <aside className="panel">尚未载入项目</aside>;
@@ -29,13 +21,13 @@ export function SummaryPanel({ project }: Props) {
       <h2>概要</h2>
       <dl className="summary">
         <dt>总时长</dt>
-        <dd>{formatSeconds(project.source.duration)}</dd>
+        <dd>{formatClock(project.source.duration)}</dd>
         <dt>保留</dt>
         <dd>
-          {formatSeconds(keepSeconds)}（{(ratio * 100).toFixed(1)}%）
+          {formatClock(keepSeconds)}（{(ratio * 100).toFixed(1)}%）
         </dd>
         <dt>切除</dt>
-        <dd>{formatSeconds(cutSeconds)}</dd>
+        <dd>{formatClock(cutSeconds)}</dd>
         <dt>片段数</dt>
         <dd>{project.segments.length}</dd>
       </dl>

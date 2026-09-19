@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { TimeRange } from "../timeline/timeRange";
 import { normalizeRange } from "../timeline/timeRange";
 import type { ProjectState, TimelineSegment, WaveformPoint } from "../types";
@@ -13,6 +13,8 @@ interface Props {
   selectedSegment: TimelineSegment | null;
   onSelectSegment: (segmentId: string) => void;
   onUpdateSegment: (segment: TimelineSegment) => void;
+  /** 拖动缩放时间轴上的倒三角时报告新的播放起点。 */
+  onSeek: (seconds: number) => void;
   playheadSeconds: number | null;
 }
 
@@ -39,9 +41,20 @@ export function TimelineWorkspace({
   selectedSegment,
   onSelectSegment,
   onUpdateSegment,
+  onSeek,
   playheadSeconds,
 }: Props) {
   const [range, setRange] = useState<TimeRange | null>(null);
+  const [viewportState, setViewport] = useState<TimeRange | null>(null);
+
+  // 概览的视口只在换项目时重置。
+  //
+  // 这件事不能并进下面那个 effect：那个 effect 的依赖里有 selectedSegment?.id，
+  // 点任何一个段落都会重跑，用户刚用滚轮缩放好的视口会被一把冲回整条。
+  useEffect(() => {
+    setViewport(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.project_id, project?.source.duration]);
 
   // 依赖只写 id，不写 project / selectedSegment 对象本身，这是故意的：
   // updateSegment 每次都会换掉整个 project 对象，把对象放进依赖里的话，在编辑栏
@@ -67,15 +80,25 @@ export function TimelineWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.project_id, selectedSegment?.id]);
 
+  // 必须 memo：没缩放过时每次渲染都会新建一个字面量对象，而概览的重绘 effect 和
+  // 滚轮监听的 effect 都拿它当依赖，对象身份一变就白重挂一遍监听器。
+  const duration = project?.source.duration ?? 0;
+  const viewport = useMemo(
+    () => viewportState ?? { start: 0, end: duration },
+    [viewportState, duration],
+  );
+
   return (
     <section className="timeline-workspace">
       <OverviewTimeline
         project={project}
         waveform={waveform}
+        viewport={viewport}
         selectedSegmentId={selectedSegmentId}
         selectedRange={range}
         onSelectSegment={onSelectSegment}
         onChangeRange={setRange}
+        onChangeViewport={setViewport}
         playheadSeconds={playheadSeconds}
       />
       <ZoomTimeline
@@ -85,6 +108,7 @@ export function TimelineWorkspace({
         selectedSegmentId={selectedSegmentId}
         onSelectSegment={onSelectSegment}
         onChangeRange={setRange}
+        onSeek={onSeek}
         playheadSeconds={playheadSeconds}
       />
       <ZoomEditBar segment={selectedSegment} onChange={onUpdateSegment} />

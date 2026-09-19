@@ -235,9 +235,15 @@ body {
   pointer-events: auto;
 }
 
-.segment:hover,
+/* 段落不画整圈边框。概览上已经有一个青色的选区框，再给段落描一圈白边会被看成
+   「凭空多出一个框」——鼠标扫过时就多一个，点一下选中别的段就又多一个。
+   悬停改成提亮，选中改成底部一条亮线，两者都不会和选区框混起来。 */
 .segment.hovered {
-  border-color: rgba(255, 255, 255, 0.55);
+  filter: brightness(1.45);
+}
+
+.segment.selected {
+  box-shadow: inset 0 -4px 0 0 #ffffff;
 }
 
 /* ---- 时间轴工作区 ---- */
@@ -271,6 +277,42 @@ body {
   border: 2px solid var(--accent);
   background: rgba(94, 234, 212, 0.14);
   pointer-events: none;
+}
+
+/* 放大之后给画布描一圈淡色边，提示「现在看的不是整条了」。
+   不然光看波形分不出是录音短还是自己缩过头了。 */
+.overview-timeline.zoomed .timeline-waveform {
+  outline: 1px solid rgba(94, 234, 212, 0.55);
+  outline-offset: -1px;
+}
+
+.overview-hint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* 视口范围推到最右边，缩放时数字的宽度变化不会把左边的操作提示挤来挤去 */
+.overview-viewport {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-reset {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.overview-reset:hover {
+  border-color: var(--accent);
 }
 
 /* ---- 缩放时间轴 ---- */
@@ -326,6 +368,45 @@ body {
 /* 缩放画布比概览高，播放头要跟着加长，否则停在半空 */
 .zoom-playhead {
   height: 210px;
+}
+
+/* 播放起点的拖动把手：一个倒三角，尖端朝下指着播放头。
+
+   按钮做成 20px 宽而不是刚好框住三角形——三角形整个是 border 拼出来的，没有
+   内容盒，命中区域只有描出来的那几像素，鼠标很难点中。左右各留 3px 余量。 */
+.zoom-scrub-handle {
+  position: absolute;
+  top: 0;
+  width: 20px;
+  height: 22px;
+  margin-left: -10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.zoom-scrub-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin-left: -7px;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 11px solid var(--accent);
+}
+
+.zoom-scrub-handle:hover::before,
+.zoom-scrub-handle:active::before {
+  border-top-color: #fff;
+}
+
+/* 播放头被缩放/平移弄到视野之外时把手贴在边上。变淡表示「它其实不在这里」，
+   但仍然能拖——否则一旦缩放到别处，就再也没法把播放头拉回来了。 */
+.zoom-scrub-handle.pinned {
+  opacity: 0.45;
 }
 
 .zoom-editbar {
