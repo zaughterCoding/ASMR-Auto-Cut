@@ -13,7 +13,7 @@ import { AudioPlayer } from "./components/AudioPlayer";
 import { ProgressBar } from "./components/ProgressBar";
 import { SegmentInspector } from "./components/SegmentInspector";
 import { SummaryPanel } from "./components/SummaryPanel";
-import { Timeline } from "./components/Timeline";
+import { TimelineWorkspace } from "./components/TimelineWorkspace";
 import { Toolbar } from "./components/Toolbar";
 import { useProjectStore } from "./state/projectStore";
 import type { OperationProgress, ProjectState } from "./types";
@@ -219,11 +219,13 @@ export function App() {
       />
       <div className="workspace">
         <div className="workspace-main">
-          <Timeline
+          <TimelineWorkspace
             project={project}
             waveform={waveform}
             selectedSegmentId={selectedSegmentId}
+            selectedSegment={selectedSegment}
             onSelectSegment={selectSegment}
+            onUpdateSegment={updateSegment}
             playheadSeconds={playheadSeconds}
           />
           <AudioPlayer

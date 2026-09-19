@@ -240,6 +240,16 @@ body {
   border-color: rgba(255, 255, 255, 0.55);
 }
 
+/* ---- 时间轴工作区 ---- */
+
+/* min-width: 0 是必须的：flex 子项默认 min-width: auto，画布撑满宽度后会把
+   .workspace-main 顶出去，窗口一窄整个布局就横向溢出。 */
+.timeline-workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 /* ---- 概览时间轴 ---- */
 
 /* 概览上的段落只作视觉，不接受指针事件。
