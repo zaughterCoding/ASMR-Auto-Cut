@@ -56,6 +56,16 @@ fn analyze_source(source_path: String, project_dir: String) -> Result<String, St
     })
 }
 
+/// 读取项目目录下的 waveform.json 原始 JSON 文本。波形点数随录音时长增长，
+/// 前端按像素列聚合后再绘制，不逐点画。
+#[tauri::command]
+fn load_waveform(project_dir: String) -> Result<String, String> {
+    let waveform_json = PathBuf::from(&project_dir).join("waveform.json");
+    std::fs::read_to_string(&waveform_json).map_err(|error| {
+        format!("读取 {} 失败: {error}", waveform_json.display())
+    })
+}
+
 #[tauri::command]
 fn load_project(project_path: String) -> Result<String, String> {
     std::fs::read_to_string(&project_path)
@@ -83,6 +93,7 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             analyze_source,
+            load_waveform,
             load_project,
             save_project,
             export_project

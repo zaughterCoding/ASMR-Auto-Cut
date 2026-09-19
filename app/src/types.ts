@@ -23,3 +23,10 @@ export interface ProjectState {
   source: MediaSource;
   segments: TimelineSegment[];
 }
+
+/** 后端 waveform.json 的一个采样点，默认每秒 20 个。 */
+export interface WaveformPoint {
+  time: number;
+  peak: number;
+  rms: number;
+}

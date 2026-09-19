@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ProjectState } from "../types";
+import type { ProjectState, WaveformPoint } from "../types";
 
 /**
  * 后端命令统一返回 JSON 文本，在这里解析成 ProjectState。
@@ -21,6 +21,15 @@ export async function analyzeSource(
 ): Promise<ProjectState> {
   const raw = await invoke<string>("analyze_source", { sourcePath, projectDir });
   return parseProjectState(raw);
+}
+
+export async function loadWaveform(projectDir: string): Promise<WaveformPoint[]> {
+  const raw = await invoke<string>("load_waveform", { projectDir });
+  const points = JSON.parse(raw) as WaveformPoint[];
+  if (!Array.isArray(points)) {
+    throw new Error("waveform.json 格式不正确，应为采样点数组");
+  }
+  return points;
 }
 
 export async function loadProject(projectPath: string): Promise<ProjectState> {

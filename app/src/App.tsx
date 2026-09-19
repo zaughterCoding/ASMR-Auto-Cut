@@ -1,4 +1,7 @@
+import { useState } from "react";
+import { SegmentInspector } from "./components/SegmentInspector";
 import { SummaryPanel } from "./components/SummaryPanel";
+import { Timeline } from "./components/Timeline";
 import { Toolbar } from "./components/Toolbar";
 import { useProjectStore } from "./state/projectStore";
 import type { ProjectState } from "./types";
@@ -17,13 +20,40 @@ const demoProject: ProjectState = {
 };
 
 export function App() {
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const project = useProjectStore((state) => state.project);
+  const waveform = useProjectStore((state) => state.waveform);
   const setProject = useProjectStore((state) => state.setProject);
+  const setWaveform = useProjectStore((state) => state.setWaveform);
+  const updateSegment = useProjectStore((state) => state.updateSegment);
+
+  const selectedSegment =
+    project?.segments.find((segment) => segment.id === selectedSegmentId) ?? null;
+
+  const loadDemo = () => {
+    setProject(demoProject);
+    // 示例项目没有真实音频，清掉上一条波形，避免和示例时间轴对不上
+    setWaveform(null);
+    setSelectedSegmentId(null);
+  };
 
   return (
     <main className="app">
-      <Toolbar onAnalyzeDemo={() => setProject(demoProject)} />
-      <SummaryPanel project={project} />
+      <Toolbar onAnalyzeDemo={loadDemo} />
+      <div className="workspace">
+        <div className="workspace-main">
+          <Timeline
+            project={project}
+            waveform={waveform}
+            selectedSegmentId={selectedSegmentId}
+            onSelectSegment={setSelectedSegmentId}
+          />
+        </div>
+        <div className="workspace-side">
+          <SummaryPanel project={project} />
+          <SegmentInspector segment={selectedSegment} onChange={updateSegment} />
+        </div>
+      </div>
     </main>
   );
 }
