@@ -1,126 +1,189 @@
 # ASMR Auto Cut
 
-从长时间的 ASMR 直播录像里挑出有用的内容，切掉废话和长时间静默，导出清理后的成片。
+从长时间的 ASMR 直播录像里挑出有用的内容，切掉闲聊和长时间静默，导出清理后的成片。
 
-V1 用 Silero VAD 检测语音、用能量规则检测长时间低活动段，把结果标在原始波形上，
-由你逐段复核修正后再导出。所有处理都在本地完成。
+一场直播录下来动辄几个小时，真正想留的可能只有其中一部分，而手工在时间轴上拖拽
+要花很久。这个工具先自动判断每段内容是语音、静默还是 ASMR，把结果画在原始波形上，
+你在波形上逐段复核修正，然后一键导出。**全程本地处理，不上传任何东西。**
 
-## 组成
+V1 是「自动判断 + 人工复核」，不是全自动——它会犯错，尤其是把耳语和轻触发声当成
+说话，所以复核这一步目前不能省。
 
-- `backend/` —— 处理核心。FFmpeg 抽音频、Silero VAD 检测语音、规则检测静默，
-  产出稳定的 JSON 中间格式。可以脱离界面单独用命令行跑。
-- `app/` —— Tauri 桌面壳 + React 前端。读上面那套 JSON，画波形、改时间轴、导出。
-
-界面和后端之间只通过 JSON 通信，不耦合模型内部结构，所以后端可以独立测试、批处理。
-
-## 环境要求
-
-- Python 3.11+
-- Node.js 18+
-- `ffmpeg` 与 `ffprobe` 在 PATH 上
-- Rust 工具链（只构建桌面端时需要）
-
-## 后端
-
-在本仓库根目录建虚拟环境并安装：
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".\backend[dev]"
-```
-
-带机器学习部分（Silero VAD）时再装：
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e ".\backend[ml]"
-```
-
-> `torch` 的 CUDA 版本要从 PyTorch 官方源单独装，PyPI 上的默认是 CPU 版：
->
-> ```powershell
-> .\.venv\Scripts\python.exe -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
-> ```
->
-> `silero-vad` 6.x 的 `__init__.py` 会无条件 import `sequence_vad`，后者依赖
-> `onnxruntime`，但 `onnxruntime` 只声明在 `onnx-cpu` / `onnx-gpu` 两个 extra 里。
-> 所以 `pyproject.toml` 里写的是 `silero-vad[onnx-cpu]`，不带上这个 extra 连
-> `import silero_vad` 都会失败。
-
-确认可执行：
-
-```powershell
-.\.venv\Scripts\asmr-auto-cut.exe --version
-```
-
-### 分析
-
-```powershell
-asmr-auto-cut analyze input.mp4 --project-dir data/projects/example
-```
-
-产物落在项目目录下：
+## 怎么用
 
 ```text
-data/projects/example/
-  project.json     分析结果（源文件信息 + 时间轴）
-  segments.json    时间轴，界面编辑和导出都以它为准
-  waveform.json    波形采样点，每秒 20 个，供界面绘制
+导入源文件 → 分析 → 在波形上复核并修正 → 保存 → 导出
 ```
 
-抽取出来的 `analysis.wav` 只是 VAD 和波形计算的中间产物，分析成功后会自动删除
-（整条录音的体积可观，8 小时约 0.9GB）。分析中途失败时会留在原地便于排查。
+1. **导入**：选一段录音或录像。
+2. **分析**：程序抽音频、跑语音检测和静默检测，把整条录音切成若干段落，每段带一个
+   标签（`asmr` / `talk` / `inactive` / `uncertain`）和一个处理方式（`keep` / `cut`）。
+3. **复核**：时间轴上每一段都是可点的色块。点一段，左侧播放器跳到该段起点并开始播放，
+   右侧面板可以改标签和处理方式。被标成 `cut` 的段落显示得更透明。
+4. **保存**：改动写回 `segments.json`，下次打开还在。
+5. **导出**：只保留标记为 `keep` 的段落，按顺序拼成一个新文件。
 
-### 导出
+## 支持的格式
+
+**作为输入**（分析和导出读的源文件）：所有 ffmpeg 能解的格式都可以，包括 `.mp4`
+`.mkv` `.flv` `.ts` `.mov` `.mp3` `.m4a` `.flac` `.wav` `.aac` `.ogg`。这部分不受
+下面的试听限制影响。（导出文件的格式是另一回事，见[导出都做了什么](#导出都做了什么)。）
+
+**界面内试听**用的是系统的 WebView2（Chromium 内核），它支持的容器比 ffmpeg 窄。
+这条限制**只影响「听着剪」，不影响分析和导出**——放不了的封装照样能切、能导。
+
+Windows 上实测（WebView2 Runtime 153，素材为 H.264 + AAC）：
+
+| 扩展名 | 试听 |
+|---|---|
+| `.mp3` `.wav` `.flac` `.m4a` `.aac` `.ogg` / opus | ✅ |
+| `.mp4` `.mov` `.mkv` | ✅（只播音轨） |
+| `.flv` `.ts` | ❌ `SRC_NOT_SUPPORTED` |
+
+放不了的话，先用 ffmpeg 转一道再导入，不影响后续流程：
 
 ```powershell
-asmr-auto-cut export data/projects/example/segments.json --output data/projects/example/exports/clean.mp4
+ffmpeg -i input.flv -vn -c:a aac output.m4a
 ```
 
-按时间轴上 `action == "keep"` 的段落切分源文件再拼接。
+> 试听能力取决于 WebView2 的版本，换一台机器可能不同。`.mkv` 能放是在 H.264 + AAC
+> 的素材上测的，如果你的 mkv 里是 H.265 之类，未必要一样。
 
-接缝处波形不连续会产生爆音，所以每个保留段的音频首尾各加 30ms 渐变，
-音频因此重编码为 AAC 192k；视频轨用 `-c:v copy` 原样透传，不重编码。
+## 安装
 
-## 桌面端
+需要 `ffmpeg` 和 `ffprobe` 在 PATH 上，这两个是硬性依赖，界面和命令行都要用。
+
+### 从源码运行
 
 ```powershell
+git clone <仓库地址>
+cd ASMR-Auto-Cut
+
+# 后端（虚拟环境建在仓库根目录）
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".\backend[dev]"
+
+# 带语音检测（Silero VAD）——分析功能必需，否则只能跑命令行骨架
+.\.venv\Scripts\python.exe -m pip install -e ".\backend[ml]"
+
+# 桌面端
 cd app
 npm install
 npm run tauri dev
 ```
 
-界面上的操作：导入源文件 → 分析 → 在波形上点选片段并修正标签/处理方式 → 保存 → 导出。
-
-项目数据默认写在仓库根目录的 `data/projects/`，可用环境变量 `ASMR_AUTO_CUT_DATA`
-指到别处。项目名取自源文件名；同名但源文件不同的会自动加序号，不会覆盖已有项目。
-
-桌面端按名称 `asmr-auto-cut` 从 PATH 找后端。开发时它通常只在项目 venv 里，
+桌面端默认按名字 `asmr-auto-cut` 从 PATH 找后端。开发时后端通常只装在项目虚拟环境里，
 用环境变量指过去：
 
 ```powershell
-$env:ASMR_AUTO_CUT_BIN = "E:\path\to\ASMR-Auto-Cut\.venv\Scripts\asmr-auto-cut.exe"
+$env:ASMR_AUTO_CUT_BIN = "<仓库路径>\.venv\Scripts\asmr-auto-cut.exe"
+npm run tauri dev
 ```
+
+> **`torch` 装 CUDA 版**：PyPI 上的默认是 CPU 版。要用显卡加速得从 PyTorch 官方源装：
+>
+> ```powershell
+> .\.venv\Scripts\python.exe -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
+> ```
+
+## 命令行
+
+不启动界面也能用，适合批处理：
+
+```powershell
+# 分析，结果写进项目目录
+asmr-auto-cut analyze input.mp4 --project-dir data/projects/example
+
+# 按时间轴导出
+asmr-auto-cut export data/projects/example/segments.json --output data/projects/example/exports/clean.mp4
+```
+
+项目目录的内容：
+
+```text
+data/projects/example/
+  project.json     源文件信息 + 时间轴
+  segments.json    时间轴，界面编辑和导出都以它为准
+  waveform.json    波形采样点，每秒 20 个，供界面绘制
+```
+
+抽取出来的 `analysis.wav` 只是中间产物（8 小时录音约 0.9GB），分析成功后会自动删除；
+分析中途失败时会留在原地方便排查。
+
+项目默认写在仓库根目录的 `data/projects/`，可以用环境变量 `ASMR_AUTO_CUT_DATA` 指到
+别处。项目名取自源文件名，同名但源文件不同的会自动加序号，不会覆盖已有项目。
+
+## 导出都做了什么
+
+- 按时间轴上 `action == "keep"` 的段落切分源文件，再拼成一个。
+- **音频重编码为 AAC 192k**：接缝处波形不连续会「啪」一声，所以每个保留段的音频首尾
+  各加 30ms 渐变。这是音频必须重编码的唯一原因。
+- **视频轨 `-c:v copy` 原样透传**，不重编码，导出速度基本只受磁盘速度限制。
+
+代价是导出文件的时长会比「所有保留段之和」多出约 23ms——AAC 编码器的 priming 造成的，
+小于一帧，可以忽略。
+
+**输出容器要用能装 AAC 的**，实测结果：
+
+| 扩展名 | 结果 |
+|---|---|
+| `.mp4` `.m4a` `.mkv` `.mov` `.aac` | 正常 |
+| `.mp3` `.flac` | 失败（容器装不下 AAC） |
+| `.wav` | ⚠️ 会「成功」，但产出的是非标准的 AAC-in-WAV，很多播放器打不开 |
+
+建议就用 `.mp4` 或 `.m4a`。选错了不会损坏源文件，重新导一次即可，但目前只会抛出
+一段 ffmpeg 的原始报错，不太好懂。
+
+## 打包分发
+
+```powershell
+cd app
+npm run tauri build
+```
+
+Windows 上实测（release 编译 1 分 41 秒）：
+
+| 产物 | 大小 |
+|---|---|
+| `target/release/asmr-auto-cut.exe` | 8.7 MB |
+| `bundle/msi/ASMR Auto Cut_0.1.0_x64_en-US.msi` | 2.9 MB |
+| `bundle/nsis/ASMR Auto Cut_0.1.0_x64-setup.exe` | 1.9 MB |
+
+> ⚠️ **现在打出来的安装包不能开箱即用。** 它只装了界面外壳，没有带后端，也没有带
+> ffmpeg。目标机器上仍然需要自己准备：Python 3.11+、装好 `asmr-auto-cut` 后端包、
+> ffmpeg 在 PATH 上。桌面端是按名字 `asmr-auto-cut` 从 PATH 找后端的，找不到就无法分析。
+>
+> 要让安装包能直接发给别人用，得把后端打成单文件可执行程序一起分发——这部分 V1
+> 没有做，是目前最明显的缺口。
 
 ## 评估
 
-`backend/asmr_auto_cut/evaluation/metrics.py` 把两份时间轴逐帧比对，给出
-`asmr_preservation_rate`（真实为 ASMR 的时间里被保住的比例）与
-`unwanted_removal_rate`（真实为 talk/inactive 的时间里被切掉的比例）——
-这两个才是这个工具真正关心的：别把 ASMR 剪掉，也别把废话留下。
+`backend/asmr_auto_cut/evaluation/metrics.py` 可以把自动切分结果和人工标注逐帧比对，
+给出两个真正关心的指标：
 
-## 测试
+- `asmr_preservation_rate`——真实为 ASMR 的时间里被保住的比例（别把该留的剪掉）
+- `unwanted_removal_rate`——真实为 talk/inactive 的时间里被切掉的比例（别把废话留下）
 
-```powershell
-cd backend
-.\.venv\Scripts\python.exe -m pytest -v
-```
-
-> `pyproject.toml` 里把 pytest 的临时目录设成了项目内的 `.pytest_tmp`，
-> 避免落到系统盘的临时目录。
+**目前只有代码接口，没有命令行入口**，要用得自己写几行 Python 调 `evaluate_segments()`。
+命令行入口留到后续版本。
 
 ## 已知限制
 
-- WebView2 支持的容器有限，`.mkv` / `.flv` 这类直播常见封装可能无法在界面里试听，
-  但分析和导出不受影响。
-- V1 会把部分 ASMR 耳语和轻触发声误判成语音，复核时手动改回即可。
-- 桌面端只在 Windows 上验证过。
+- **仅验证过 Windows**。macOS 和 Linux 理论上能跑（Tauri 是跨平台的），但没有测过。
+- **V1 会误判**。部分 ASMR 耳语和轻触发声会被当成说话，复核时手动改回即可。
+- **`waveform.json` 偏大**。每秒 20 个采样点且带缩进，8 小时录音约 29MB，界面会整份
+  读进内存，长录音的响应会变慢。
+- **中英混排的路径**没问题（在中文和空格路径下测过），但极长的路径未验证。
+
+## 开发
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m pytest -v
+```
+
+改动前建议读一下 [CONTRIBUTING.md](CONTRIBUTING.md)，里面记了几个容易踩的坑。
+
+## 许可证
+
+[MIT](LICENSE)
