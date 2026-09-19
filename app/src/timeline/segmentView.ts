@@ -17,6 +17,19 @@ export interface VisibleSegment {
  * 丢掉而不是返回零宽度的段：零宽度的段在 canvas 上什么都画不出来，却还会参与
  * 命中测试，用户点空白处会莫名其妙选中一个看不见的段。
  */
+/**
+ * 找出某一时刻落在哪个段落上，没有就返回 null。
+ *
+ * 端点用闭区间：段落首尾相接铺满整条录音，落在交界处的时刻两边都算命中，
+ * find 取靠左那个。这样既不会出现「点在交界上谁都不选」，结果也是确定的。
+ */
+export function findSegmentAt(
+  segments: TimelineSegment[],
+  time: number,
+): TimelineSegment | null {
+  return segments.find((segment) => time >= segment.start && time <= segment.end) ?? null;
+}
+
 export function clipSegmentsToRange(
   segments: TimelineSegment[],
   range: TimeRange,

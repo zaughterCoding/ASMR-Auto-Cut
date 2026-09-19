@@ -235,8 +235,32 @@ body {
   pointer-events: auto;
 }
 
-.segment:hover {
+.segment:hover,
+.segment.hovered {
   border-color: rgba(255, 255, 255, 0.55);
+}
+
+/* ---- 概览时间轴 ---- */
+
+/* 概览上的段落只作视觉，不接受指针事件。
+   段落是首尾相接铺满整条时间轴的，只要它们能接收指针，画布就永远收不到
+   pointerdown——选区既建不起来也拖不动。悬停高亮改由 .hovered 承担，
+   选中改由画布上的命中测试（findSegmentAt）决定。 */
+.overview-timeline .segment {
+  pointer-events: none;
+}
+
+.overview-timeline .timeline-waveform {
+  cursor: crosshair;
+}
+
+.overview-selection {
+  position: absolute;
+  top: 0;
+  height: 120px;
+  border: 2px solid var(--accent);
+  background: rgba(94, 234, 212, 0.14);
+  pointer-events: none;
 }
 
 .timeline-playhead {
