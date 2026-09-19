@@ -25,6 +25,10 @@
   误剪 = 人工标成 asmr 的窗口里，被模型判 cut 的秒数。丢的是内容，用户拿不回来。
   残留 = 人工标成 talk/inactive/other 的窗口里，被判 keep 的秒数。切得不干净。
   误剪是硬约束、残留是优化目标：整片里混着几分钟废话还能用，剪掉的内容回不来。
+
+但这两个都是**秒数**，于是漏掉一种代价：把一段连续内容切成许多小段，秒数上的残留
+会下降（夹在中间的小块被切掉了），可这些小块正是成片里听得出来的空隙。所以另外记
+一笔 keep 段的碎片数，并在选中项明显更碎的时候报警（见 FRAGMENT_SECONDS）。
 """
 
 import json
@@ -91,6 +95,13 @@ CUT_TOLERANCE = 3.0
 WANT_KEEP = {"asmr"}
 WANT_CUT = {"talk", "inactive", "other"}
 
+#: keep 段短于这个秒数就算一个碎片。秒数指标对「切碎」是免单的——把一段连续的
+#: 内容切掉中间若干小块，残留会下降，可这些小块正是成片里听得出来的空隙。碎片
+#: 数把这个代价显示出来，但**不作为硬约束**：短 keep 段有时本来就该短（两段 ASMR
+#: 之间的夹缝），一刀切会把合法的边界也判成超标。所以只在选中项比现状更碎时报警，
+#: 由人来决定值不值。
+FRAGMENT_SECONDS = 2.0
+
 
 @dataclass
 class Window:
@@ -110,6 +121,11 @@ class Score:
     #: 等量上升抵消，那这一轮就没在找边界，只是在同一根杆子上滑。
     切掉: float
     段数: int
+    #: keep 段的个数、平均时长，以及其中短于 FRAGMENT_SECONDS 的个数。这三个是
+    #: 「切碎」的代价，秒数指标看不见。
+    keep段数: int
+    keep均长: float
+    碎片: int
     #: 人工标签 -> 残留秒数。分开统计是因为 talk 的残留该找 VAD，inactive 的残留
     #: 该找静默检测器——两套完全不同的东西，混成一个数就不知道该动哪个。
     残留明细: dict[str, float]
@@ -163,8 +179,26 @@ def score(segments, windows: list[Window]) -> Score:
         else:
             kept_wrong += kept
             residual[window.truth] = residual.get(window.truth, 0.0) + kept
-    return Score(误剪=cut_wrong, 残留=kept_wrong, 切掉=cut_total,
-                 段数=len(segments), 残留明细=residual)
+    kept_segments = [s for s in segments if s.action == "keep"]
+    kept_seconds = sum(s.end - s.start for s in kept_segments)
+    return Score(
+        误剪=cut_wrong,
+        残留=kept_wrong,
+        切掉=cut_total,
+        段数=len(segments),
+        keep段数=len(kept_segments),
+        keep均长=kept_seconds / len(kept_segments) if kept_segments else 0.0,
+        碎片=sum(1 for s in kept_segments if s.end - s.start < FRAGMENT_SECONDS),
+        残留明细=residual,
+    )
+
+
+def format_score(score: Score) -> str:
+    """一行给出所有指标。基准、每轮各行、最终对比都用它，免得格式各写一遍。"""
+    return (
+        f"误剪 {score.误剪:6.1f}s  残留 {score.残留:7.1f}s  切掉 {score.切掉:7.1f}s  "
+        f"{score.段数:4d} 段  碎片 {score.碎片:3d}（keep 均长 {score.keep均长:5.1f}s）"
+    )
 
 
 def format_residual(score: Score) -> str:
@@ -247,8 +281,7 @@ def main() -> None:
     best = base_config
     label = "当前默认" if not overrides else "基准 " + ",".join(f"{k}={v}" for k, v in overrides.items())
     base = run_once(best, wav, waveform_for(best), windows, duration, model)
-    print(f"{label:<32}误剪 {base.误剪:6.1f}s  残留 {base.残留:7.1f}s  "
-          f"切掉 {base.切掉:7.1f}s  {base.段数:4d} 段")
+    print(f"{label:<32}{format_score(base)}")
     print(f"  残留构成：{format_residual(base)}\n")
 
     for number, (field, values) in enumerate(ROUNDS, start=1):
@@ -262,8 +295,7 @@ def main() -> None:
             trial = best.model_copy(update={field: value})
             result = run_once(trial, wav, waveform_for(trial), windows, duration, model)
             mark = "  <- 当前" if getattr(best, field) == value else ""
-            print(f"  {field}={value!s:<10}误剪 {result.误剪:6.1f}s  残留 {result.残留:7.1f}s  "
-                  f"切掉 {result.切掉:7.1f}s  {result.段数:4d} 段{mark}")
+            print(f"  {field}={value!s:<10}{format_score(result)}{mark}")
             rows.append((value, result))
 
         # 约束线锚在基准上，不锚在本轮最小值上。「误剪最小 + 带宽」看着等价，其实
@@ -275,9 +307,17 @@ def main() -> None:
         # 预算内一个都没有，说明 incumbent 自己已越线——那就别动了。
         eligible = eligible or [(v, r) for v, r in rows if getattr(best, field) == v]
         winner_value, winner = min(eligible, key=lambda item: item[1].残留)
+        incumbent = next((r for v, r in rows if getattr(best, field) == v), None)
         best = best.model_copy(update={field: winner_value})
         print(f"  ➜ 取 {field}={winner_value}（误剪预算 {budget:.1f}s，"
-              f"预算内残留最低 {winner.残留:.1f}s）\n")
+              f"预算内残留最低 {winner.残留:.1f}s）")
+        # 残留降了但碎片涨了，说明这一轮是靠在连续内容中间掏洞换来的，不是把边界
+        # 挪准了。不做硬约束——短 keep 段有时本来就该短——但必须说出来让人自己判。
+        if incumbent is not None and winner.碎片 > incumbent.碎片:
+            print(f"     ⚠ keep 碎片 {incumbent.碎片} -> {winner.碎片}"
+                  f"（均长 {incumbent.keep均长:.1f}s -> {winner.keep均长:.1f}s）："
+                  f"残留是靠把连续的 keep 段切成小段换来的，成片会更碎")
+        print()
 
     print("=" * 78)
     print("最终参数")
@@ -290,8 +330,12 @@ def main() -> None:
         print("\n  基准即最终参数，没有需要复算的。")
     else:
         final = run_once(best, wav, waveform_for(best), windows, duration, model)
-        print(f"\n  基准   误剪 {base.误剪:6.1f}s  残留 {base.残留:7.1f}s  切掉 {base.切掉:7.1f}s")
-        print(f"  扫出来 误剪 {final.误剪:6.1f}s  残留 {final.残留:7.1f}s  切掉 {final.切掉:7.1f}s")
+        print(f"\n  基准   {format_score(base)}")
+        print(f"  扫出来 {format_score(final)}")
+        if final.碎片 > base.碎片:
+            print(f"         ⚠ 碎片比基准多了 {final.碎片 - base.碎片} 个"
+                  f"（keep 均长 {base.keep均长:.1f}s -> {final.keep均长:.1f}s）："
+                  f"这些秒数是拿成片变碎换来的")
 
     if keep_audio:
         print(f"\n（分析音频保留：{wav}）")

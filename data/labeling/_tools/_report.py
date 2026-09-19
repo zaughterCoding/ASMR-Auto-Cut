@@ -12,6 +12,15 @@
 和 _sweep_vad.py 的分工：那个在**固定的**标注窗口上比较不同参数组合，用来排参数；
 这个拿**当前**的落盘结果算绝对指标，用来看交付物到底有多好。两者的「误剪/残留」
 口径一致，可以直接对着看。
+
+**分组按当前模型重算，不读对照表里那份快照。** 对照表的「模型判断」列是生成时
+写下的，一改算法就过期；照着它算，混淆矩阵和时间折算都会是旧模型的成绩，而且
+折算那一步会变成「旧模型的分组错误率 × 新模型的分组总时长」，两个口径混在一起。
+所以这里用窗口中点去当前的 segments.json 里查它落在哪一段。
+
+这仍不是完全无偏的：抽样配额是按**快照**分组分的，所以「当前分到 keep 的窗口」
+偏向于那些模型判断一直没变的窗口。要彻底消掉得重新抽一批，但排名和相对变化不受
+影响——_sweep_vad.py 就是用同一批固定窗口做这件事的。
 """
 
 import csv
@@ -43,6 +52,24 @@ def load_waveform(project_dir: Path) -> list[dict]:
     return json.loads((project_dir / "waveform.json").read_text(encoding="utf-8"))
 
 
+def current_group(segments: list[dict], start: float, duration: float) -> str | None:
+    """窗口的中点落在当前哪一段里，就按那一段的决策分组。
+
+    用中点而不是「重叠面积最大的一段」：窗口有 10 秒，算法一改就可能横跨好几段，
+    按面积归一的话结果会随切点漂移，同一批窗口在不同参数下的分组就不稳定了。
+    中点只有一个点，口径稳，而且和抽样时「跟随模型分段取中间那一段」的做法一致。
+    """
+    middle = start + duration / 2
+    for seg in segments:
+        if seg["start"] <= middle < seg["end"]:
+            if seg["action"] == "keep":
+                return "keep"
+            if seg["label"] in ("talk", "inactive"):
+                return seg["label"]
+            return None
+    return None
+
+
 def window_rms(waveform: list[dict], start: float, duration: float) -> float | None:
     """取 [start, start+duration) 这段窗口的平均 rms。"""
     picked = [
@@ -62,17 +89,29 @@ def main() -> None:
     labels = {row["clip_id"]: row for row in load_csv(out_dir / "labels.csv")}
     key_rows = {row["clip_id"]: row for row in load_csv(out_dir / "_answer_key.csv")}
     waveform = load_waveform(project_dir_)
+    document = json.loads((project_dir_ / "segments.json").read_text(encoding="utf-8"))
+    segments = document["segments"]
 
     rows = []
+    unplaced: list[str] = []
     for clip_id, key_row in sorted(key_rows.items()):
         label_row = labels.get(clip_id)
         if label_row is None:
             continue
+        start = float(key_row["原片起点秒"])
+        duration = float(key_row["时长秒"])
+        group = current_group(segments, start, duration)
+        if group is None:
+            unplaced.append(clip_id)
+            continue
         rows.append({
             "clip_id": clip_id,
-            "group": key_row["模型判断"],
-            "start": float(key_row["原片起点秒"]),
-            "duration": float(key_row["时长秒"]),
+            #: 当前模型在这个窗口上的决策。
+            "group": group,
+            #: 对照表里生成时写下的那一份，只用来显示模型挪动了多少。
+            "snapshot": key_row["模型判断"],
+            "start": start,
+            "duration": duration,
             "truth": (label_row.get("你的判断") or "").strip().lower(),
             "note": (label_row.get("备注（可选）") or "").strip(),
         })
@@ -81,6 +120,13 @@ def main() -> None:
     if blank:
         print(f"⚠️ 还没填的片段：{len(blank)} 个 —— {', '.join(blank[:10])}")
     rows = [r for r in rows if r["truth"]]
+    if unplaced:
+        print(f"⚠️ 中点落在无法分组的段落里，已跳过：{len(unplaced)} 个"
+              f" —— {', '.join(unplaced[:10])}")
+    moved = sum(1 for r in rows if r["group"] != r["snapshot"])
+    if moved:
+        print(f"ℹ️ 有 {moved}/{len(rows)} 个窗口，当前模型的分组和对照表快照不同"
+              f"（快照是抽片段时写的，这里按当前模型重算）")
 
     groups = ["keep", "talk", "inactive"]
     truths = ["asmr", "talk", "inactive", "other", "mixed", "uncertain"]
@@ -106,8 +152,6 @@ def main() -> None:
         print(f"  {group:<9} {len(right):3d}/{len(subset):<3d} = {len(right)/len(subset)*100:5.1f}%")
 
     # 按时间折算：每组的片段等权，乘以该组在原片里的总时长
-    document = json.loads((project_dir_ / "segments.json").read_text(encoding="utf-8"))
-    segments = document["segments"]
     totals = {g: 0.0 for g in groups}
     for seg in segments:
         if seg["action"] == "keep":
@@ -146,6 +190,11 @@ def main() -> None:
 
     # 抽样是分层的，样本里的秒数不等于原片的秒数；这一栏不做时间折算，
     # 直接数窗口，用来看「改动有没有让这几组变好」。
+    #
+    # 算法和 _sweep_vad.py 的 score() 逐字一致：按窗口**实际被 keep 覆盖的秒数**算，
+    # 不是按「窗口中点落在哪一组」整段算。后者看着等价，其实差很多——模型完全可以
+    # 切掉一个窗口的中间、留下两头，那时中点落在 cut 段里，整段计数会把它记成 0
+    # 残留，而实际留下了几秒。两边口径必须一样，否则同一批窗口能报出两个数。
     print()
     print("=" * 66)
     print("样本内的原始秒数（不含时间折算，只看相对变化）")
@@ -156,11 +205,16 @@ def main() -> None:
         if r["truth"] in ("mixed", "uncertain"):
             excluded += 1
             continue
+        hi = r["start"] + r["duration"]
+        kept = sum(
+            max(0.0, min(seg["end"], hi) - max(seg["start"], r["start"]))
+            for seg in segments
+            if seg["action"] == "keep"
+        )
         if r["truth"] in WANT_KEEP:
-            if r["group"] != "keep":
-                sample_cut += r["duration"]
-        elif r["truth"] in WANT_CUT and r["group"] == "keep":
-            sample_kept += r["duration"]
+            sample_cut += r["duration"] - kept
+        elif r["truth"] in WANT_CUT:
+            sample_kept += kept
     print(f"  误剪（该留却被切掉的样本秒数）  {sample_cut:6.1f}s")
     print(f"  残留（该切却留下的样本秒数）    {sample_kept:6.1f}s")
     print(f"\n  （mixed / uncertain 共 {excluded} 个，两边都不计）")
