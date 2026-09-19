@@ -1,20 +1,22 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   analyzeSource,
   exportProject,
+  listenToBackendProgress,
   loadProject,
   loadWaveform,
   projectsRootPath,
   saveProject,
 } from "./api/backend";
 import { AudioPlayer } from "./components/AudioPlayer";
+import { ProgressBar } from "./components/ProgressBar";
 import { SegmentInspector } from "./components/SegmentInspector";
 import { SummaryPanel } from "./components/SummaryPanel";
 import { Timeline } from "./components/Timeline";
 import { Toolbar } from "./components/Toolbar";
 import { useProjectStore } from "./state/projectStore";
-import type { ProjectState } from "./types";
+import type { OperationProgress, ProjectState } from "./types";
 
 const MEDIA_EXTENSIONS = ["mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "mp4", "mkv", "flv", "ts", "mov"];
 
@@ -72,6 +74,7 @@ export function App() {
   const [playheadSeconds, setPlayheadSeconds] = useState<number | null>(null);
   const [status, setStatus] = useState("就绪");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<OperationProgress | null>(null);
 
   const project = useProjectStore((state) => state.project);
   const projectPath = useProjectStore((state) => state.projectPath);
@@ -81,6 +84,24 @@ export function App() {
   const setSourcePath = useProjectStore((state) => state.setSourcePath);
   const setWaveform = useProjectStore((state) => state.setWaveform);
   const updateSegment = useProjectStore((state) => state.updateSegment);
+
+  // 订阅后端进度。listen 返回的是 Promise，而组件可能在它 resolve 之前就卸载，
+  // 那种情况下没有 unlisten 可调，只能等 resolve 出来再补调一次，否则监听器
+  // 会一直挂在 window 上：热重载几轮之后同一条进度会被处理好几遍。
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    listenToBackendProgress((event) => {
+      if (!disposed) setProgress(event);
+    }).then((cleanup) => {
+      if (disposed) cleanup();
+      else unlisten = cleanup;
+    });
+    return () => {
+      disposed = true;
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   const selectedSegment =
     project?.segments.find((segment) => segment.id === selectedSegmentId) ?? null;
@@ -105,6 +126,9 @@ export function App() {
 
   async function run<T>(label: string, action: () => Promise<T>): Promise<T | null> {
     setBusy(true);
+    // 清掉上一次操作的百分比：新操作开始时后端还没发第一批事件，不清的话进度条
+    // 会先显示上一次的旧值再跳回去。
+    setProgress(null);
     setStatus(`${label}…`);
     try {
       const result = await action();
@@ -114,6 +138,9 @@ export function App() {
       return null;
     } finally {
       setBusy(false);
+      // 结束后把进度条交还给 status 文字：成功时留着 100% 会让人以为还在跑，
+      // 失败时留着中途的百分比更是误导。
+      setProgress(null);
     }
   }
 
@@ -210,7 +237,7 @@ export function App() {
           <SegmentInspector segment={selectedSegment} onChange={updateSegment} />
         </div>
       </div>
-      <footer className="statusbar">{status}</footer>
+      <ProgressBar status={status} progress={progress} busy={busy} />
     </main>
   );
 }

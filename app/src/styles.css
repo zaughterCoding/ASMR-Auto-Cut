@@ -71,10 +71,46 @@ body {
 /* ---- 状态栏 ---- */
 
 .statusbar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   padding: 6px 14px;
   border-top: 1px solid var(--border);
   background: var(--panel);
   color: var(--text-dim);
+}
+
+/* tabular-nums：百分比每跳一次都改数字宽度的话，右边的数字会左右抖 */
+.statusbar-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #0f121a;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 160ms ease;
+}
+
+/* 后端还不知道进度时用滑动条，不画成 0%——0% 看起来像卡住了 */
+.progress.indeterminate .progress-fill {
+  width: 35%;
+  animation: progress-slide 1.2s infinite ease-in-out;
+}
+
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 
 /* ---- 主区域 ---- */
