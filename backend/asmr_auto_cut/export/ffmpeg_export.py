@@ -1,9 +1,11 @@
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from asmr_auto_cut.media.ffmpeg import ensure_ffmpeg_available, run_command
 from asmr_auto_cut.models import ProjectState
+from asmr_auto_cut.progress import ProgressEvent
 
 #: 每个 keep 段首尾的淡入淡出时长。接缝两侧波形不连续会产生爆音，
 #: 加一小段渐变压掉；0 表示不做处理（导出更快，但接缝可能可闻）。
@@ -14,6 +16,25 @@ DEFAULT_FADE_SECONDS = 0.03
 class ExportClip:
     start: float
     end: float
+
+
+def _report(
+    progress: Callable[[ProgressEvent], None] | None,
+    phase: str,
+    message: str,
+    current: int,
+    total: int,
+) -> None:
+    if progress is not None:
+        progress(
+            ProgressEvent(
+                operation="export",
+                phase=phase,
+                message=message,
+                current=current,
+                total=total,
+            )
+        )
 
 
 def build_keep_clips(state: ProjectState) -> list[ExportClip]:
@@ -67,11 +88,19 @@ def export_clean_media(
     state: ProjectState,
     output_path: Path,
     fade_seconds: float = DEFAULT_FADE_SECONDS,
+    progress: Callable[[ProgressEvent], None] | None = None,
 ) -> Path:
     ensure_ffmpeg_available()
     clips = build_keep_clips(state)
     if not clips:
         raise RuntimeError("Timeline has no keep segments, nothing to export.")
+
+    # 分母是「准备 1 + 每段 1 + 合并 1 + 收尾 1」。逐段导出是耗时大头，
+    # 所以每渲染完一段报一次，长时间导出时进度条才会真的在动，
+    # 而不是卡在 20% 直到全部结束。
+    total = len(clips) + 3
+    _report(progress, "build_clip_list", "正在准备导出片段", 1, total)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     # 临时分段总大小与输出相当，不能落在默认的 %TEMP%（C 盘），
     # 放到输出文件同目录，跟数据一起留在项目盘上。
@@ -82,12 +111,20 @@ def export_clean_media(
             clip_path = temp_dir / f"clip_{index:06d}.mp4"
             run_command(_clip_command(state.source.path, clip, clip_path, fade_seconds))
             clip_files.append(clip_path)
+            _report(
+                progress,
+                "render_clip",
+                f"正在导出片段 {index + 1}/{len(clips)}",
+                index + 2,
+                total,
+            )
 
         list_path = temp_dir / "clips.txt"
         list_path.write_text(
             "".join(f"file '{path.as_posix()}'\n" for path in clip_files),
             encoding="utf-8",
         )
+        _report(progress, "concat_clips", "正在合并片段", total - 1, total)
         run_command(
             [
                 "ffmpeg",
@@ -103,4 +140,5 @@ def export_clean_media(
                 str(output_path),
             ]
         )
+    _report(progress, "finish", "导出完成", total, total)
     return output_path
