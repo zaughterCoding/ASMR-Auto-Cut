@@ -57,6 +57,43 @@ def merge_cut_intervals(
     return merged
 
 
+def subtract_intervals(
+    intervals: list[RawInterval],
+    holes: list[RawInterval],
+) -> list[RawInterval]:
+    """从 intervals 里挖掉 holes 盖住的部分，剩下几段就返回几段，标签原样带走。
+
+    用途是算复核带：宽阈值（低）跑出来的「可能是人声」减去窄阈值（高）跑出来的
+    「确定是人声」，剩下的就是模型自己拿不准的那一段。两个阈值只是同一串概率的
+    两种切法，所以结果必然落在宽的那一份里——但这里不假设包含关系，真做减法，
+    免得哪天某个阈值组合切出不是子集的形状（`neg_threshold` 跟着阈值走，
+    两个阈值的迟滞宽度其实不一样）。
+
+    要求两个入参**各自有序且不重叠**。这是两个生产者的实际输出：Silero 的区间天然
+    有序不重叠；uncertain 本身也是这么减出来的。
+    """
+    if not holes:
+        return list(intervals)
+
+    result: list[RawInterval] = []
+    index = 0
+    for item in intervals:
+        cursor = item.start
+        # 已经结束在前面的洞用不上了，跳过（洞有序，所以跳过的不会再用到）。
+        while index < len(holes) and holes[index].end <= cursor:
+            index += 1
+        probe = index
+        while probe < len(holes) and holes[probe].start < item.end:
+            hole = holes[probe]
+            if hole.start > cursor:
+                result.append(replace(item, start=cursor, end=hole.start))
+            cursor = max(cursor, hole.end)
+            probe += 1
+        if cursor < item.end:
+            result.append(replace(item, start=cursor, end=item.end))
+    return result
+
+
 def build_segments(duration: float, cut_intervals: list[RawInterval]) -> list[TimelineSegment]:
     segments: list[TimelineSegment] = []
     cursor = 0.0

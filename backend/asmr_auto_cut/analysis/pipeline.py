@@ -2,7 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from asmr_auto_cut.analysis.block_analysis import analyze_audio_blocks
-from asmr_auto_cut.analysis.speech import detect_speech_intervals
+from asmr_auto_cut.analysis.speech import detect_speech
 from asmr_auto_cut.analysis.waveform import save_waveform_json
 from asmr_auto_cut.config import AnalysisConfig
 from asmr_auto_cut.media.ffmpeg import extract_analysis_audio, probe_duration
@@ -48,10 +48,15 @@ def assemble_project_state(
     speech_intervals: list[RawInterval],
     inactive_intervals: list[RawInterval],
     config: AnalysisConfig,
+    uncertain_intervals: list[RawInterval] | None = None,
 ) -> ProjectState:
     cuts = merge_cut_intervals(speech_intervals + inactive_intervals, merge_gap=config.merge_gap)
     raw_segments = build_segments(duration=duration, cut_intervals=cuts)
     refined_segments = refine_segments(raw_segments, duration=duration, config=config)
+    # 复核带排在 refine 之后，因为它只给保留段换标签（见 timeline/review.py）。
+    # 给 None 就是不开复核带——测量脚本走这条路，拿到的段落与带内时代逐位相同。
+    if uncertain_intervals:
+        refined_segments = mark_uncertain(refined_segments, uncertain_intervals)
     return ProjectState(
         project_id=project_id,
         source=MediaSource(path=source_path, duration=duration),
@@ -107,7 +112,7 @@ def analyze_source(
             _report(progress, "analyze_blocks", note, 3, total)
 
     _report(progress, "detect_speech", "正在检测人声", 4, total)
-    speech_intervals = detect_speech_intervals(wav_path, config)
+    detection = detect_speech(wav_path, config)
     wav_path.unlink()
 
     _report(progress, "build_timeline", "正在生成时间轴", 5, total)
@@ -115,9 +120,10 @@ def analyze_source(
         project_id=project_dir.name,
         source_path=str(source),
         duration=duration,
-        speech_intervals=speech_intervals,
+        speech_intervals=detection.speech,
         inactive_intervals=block_result.inactive_intervals,
         config=config,
+        uncertain_intervals=detection.uncertain,
     )
     _report(progress, "save_project", "正在保存项目", 6, total)
     save_project_state(project_dir / "project.json", state)

@@ -1,4 +1,9 @@
-from asmr_auto_cut.timeline.intervals import RawInterval, build_segments, merge_cut_intervals
+from asmr_auto_cut.timeline.intervals import (
+    RawInterval,
+    build_segments,
+    merge_cut_intervals,
+    subtract_intervals,
+)
 
 
 def covered(intervals: list[RawInterval]) -> float:
@@ -61,6 +66,58 @@ def test_merge_cut_intervals_drops_fully_contained_interval():
     merged = merge_cut_intervals(intervals, merge_gap=0.2)
     assert [(item.start, item.end, item.label) for item in merged] == [(1.0, 10.0, "inactive")]
     assert covered(merged) == covered(intervals) == 9.0
+
+
+def test_subtract_intervals_holes_out_the_middle():
+    intervals = [RawInterval(0.0, 10.0, "talk", 0.9, "vad")]
+    holes = [RawInterval(4.0, 6.0, "uncertain", 0.3, "band")]
+    assert [(item.start, item.end) for item in subtract_intervals(intervals, holes)] == [
+        (0.0, 4.0),
+        (6.0, 10.0),
+    ]
+
+
+def test_subtract_intervals_without_holes_returns_the_input():
+    intervals = [RawInterval(0.0, 10.0, "talk", 0.9, "vad")]
+    assert subtract_intervals(intervals, []) == intervals
+
+
+def test_subtract_intervals_drops_a_fully_covered_interval():
+    intervals = [RawInterval(0.0, 10.0, "talk", 0.9, "vad")]
+    holes = [RawInterval(0.0, 10.0, "uncertain", 0.3, "band")]
+    assert subtract_intervals(intervals, holes) == []
+
+
+def test_subtract_intervals_handles_a_hole_straddling_the_start():
+    """洞从区间左边伸进来：起点被吃掉，第一片从洞的结尾开始。"""
+    intervals = [RawInterval(5.0, 10.0, "talk", 0.9, "vad")]
+    holes = [RawInterval(0.0, 6.0, "uncertain", 0.3, "band")]
+    assert [(item.start, item.end) for item in subtract_intervals(intervals, holes)] == [(6.0, 10.0)]
+
+
+def test_subtract_intervals_carries_the_original_metadata():
+    """挖出来的碎片还是原来那段东西，标签和出处不该被洞的标签覆盖。"""
+    intervals = [RawInterval(0.0, 10.0, "talk", 0.9, "vad")]
+    holes = [RawInterval(4.0, 6.0, "uncertain", 0.3, "band")]
+    for piece in subtract_intervals(intervals, holes):
+        assert (piece.label, piece.confidence, piece.source) == ("talk", 0.9, "vad")
+
+
+def test_subtract_intervals_across_several_intervals_and_holes():
+    """洞跨到下一个区间时要接着用，不能被第一个区间丢掉。"""
+    intervals = [
+        RawInterval(0.0, 2.0, "talk", 0.9, "vad"),
+        RawInterval(4.0, 8.0, "talk", 0.9, "vad"),
+        RawInterval(10.0, 12.0, "talk", 0.9, "vad"),
+    ]
+    holes = [
+        RawInterval(1.0, 5.0, "uncertain", 0.3, "band"),
+        RawInterval(7.0, 11.0, "uncertain", 0.3, "band"),
+    ]
+    pieces = subtract_intervals(intervals, holes)
+    assert [(item.start, item.end) for item in pieces] == [(0.0, 1.0), (5.0, 7.0), (11.0, 12.0)]
+    # 挖掉多少就该少多少：8 秒的输入被洞盖住 4 秒，剩下 4 秒。
+    assert covered(pieces) == covered(intervals) - 4.0 == 4.0
 
 
 def test_build_segments_inverts_cut_intervals():
