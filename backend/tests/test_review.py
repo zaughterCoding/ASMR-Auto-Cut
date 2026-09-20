@@ -103,6 +103,77 @@ def test_mark_uncertain_without_a_band_changes_nothing():
     assert mark_uncertain(segments, []) == segments
 
 
+def test_mark_uncertain_drops_a_band_too_short_to_listen_to():
+    """短于下限的高亮段不成立，两侧的保留段连回一片。
+
+    这不是审美问题：两个下沿不同的刀切出来的边界能差到一个采样点（62.5µs），
+    实测「标准」档就会切出 0.00s 的高亮段。而高亮段是要用户逐段听过去判断的，
+    62µs 听不出任何东西——跳转导航落上去，视野几乎不动，用户会以为按钮坏了。
+    """
+    segments = [segment("seg_1", 0.0, 5.0, "asmr", "keep")]
+
+    marked = mark_uncertain(segments, [band(1.0, 1.06)], min_duration=0.25)
+
+    # 一片 asmr，而不是 [asmr][62µs][asmr]；id 也没变，因为这个段本来就没被切开
+    assert [(item.start, item.end, item.label) for item in marked] == [(0.0, 5.0, "asmr")]
+    assert [item.id for item in marked] == ["seg_1"]
+
+
+def test_mark_uncertain_keeps_a_band_exactly_at_the_minimum():
+    """下限是「不短于」，正好等于它的留。差一个等号会让阈值附近的带子随机消失。"""
+    segments = [segment("seg_1", 0.0, 5.0, "asmr", "keep")]
+    marked = mark_uncertain(segments, [band(1.0, 1.25)], min_duration=0.25)
+    assert [(item.start, item.end, item.label) for item in marked] == [
+        (0.0, 1.0, "asmr"),
+        (1.0, 1.25, "uncertain"),
+        (1.25, 5.0, "asmr"),
+    ]
+
+
+def test_mark_uncertain_merges_across_a_dropped_band():
+    """丢掉中间那根短带子之后，它两侧的保留段要连成一片，而不是留两个碎段。
+
+    合并是靠 subtract_intervals 少走一个洞自然得到的，不需要额外拼段——所以这条
+    用例真正钉的是「别在丢掉之后忘了合并」。
+    """
+    segments = [segment("seg_1", 0.0, 10.0, "asmr", "keep")]
+    marked = mark_uncertain(
+        segments,
+        [band(2.0, 3.0), band(4.0, 4.05), band(6.0, 7.0)],
+        min_duration=0.25,
+    )
+    assert [(item.start, item.end, item.label) for item in marked] == [
+        (0.0, 2.0, "asmr"),
+        (2.0, 3.0, "uncertain"),
+        (3.0, 6.0, "asmr"),
+        (6.0, 7.0, "uncertain"),
+        (7.0, 10.0, "asmr"),
+    ]
+    assert_tiles(marked, 0.0, 10.0)
+
+
+def test_mark_uncertain_measures_length_after_clipping():
+    """先裁后量。伸出段外的带子被裁短之后可能就不够长了，那时也该丢掉。
+
+    先量后裁的话，一根 0.3s 的带子哪怕只有 0.1s 落在段里也会成立，段尾就留下一根
+    用户根本看不到的细线。
+    """
+    segments = [segment("seg_1", 0.0, 3.0, "asmr", "keep")]
+    marked = mark_uncertain(segments, [band(2.9, 3.2)], min_duration=0.25)
+    assert [(item.start, item.end, item.label) for item in marked] == [(0.0, 3.0, "asmr")]
+
+
+def test_the_default_minimum_filters_nothing():
+    """不传下限就是不过滤——测量脚本按老口径读，读数才不会因为这次改动而变化。"""
+    segments = [segment("seg_1", 0.0, 5.0, "asmr", "keep")]
+    marked = mark_uncertain(segments, [band(1.0, 1.06)])
+    assert [(item.start, item.end, item.label) for item in marked] == [
+        (0.0, 1.0, "asmr"),
+        (1.0, 1.06, "uncertain"),
+        (1.06, 5.0, "asmr"),
+    ]
+
+
 def test_review_bands_all_open_a_band_below_the_speech_threshold():
     """每一档都得真的开出一条带——等于或高过 vad_threshold 就是关掉了复核带，
     那样用户选了「细致」却一个高亮都看不到。"""

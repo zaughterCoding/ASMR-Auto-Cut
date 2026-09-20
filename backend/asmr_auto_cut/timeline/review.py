@@ -31,10 +31,11 @@ def _clip_to(intervals: list[RawInterval], start: float, end: float) -> list[Raw
 def mark_uncertain(
     segments: list[TimelineSegment],
     uncertain_intervals: list[RawInterval],
+    min_duration: float = 0.0,
 ) -> list[TimelineSegment]:
     """把与复核带重叠的**保留段**标成 `uncertain`。
 
-    两条不变量：
+    三条不变量：
 
       * **只碰 action == "keep" 的段。** 切段原样返回，所以「切哪儿」这个决定与
         不开复核带时逐位相同。这是这个功能敢发的前提：它只多了一层颜色，一刀都没
@@ -42,6 +43,8 @@ def mark_uncertain(
       * **输出仍是一层平铺。** 保留段被复核带切开之后，两边都是保留段，只是标签
         不同，所以段与段照样首尾相接、无缝无叠（`ProjectState` 要求有序，
         `build_segments` 的调用方也都假设它铺满整条时间轴）。
+      * **短于 `min_duration` 的高亮段不成立。** 丢掉它，并让 `subtract_intervals`
+        把它两侧的保留段自动连成一片——内容一点没少，只是不单独高亮。
 
     复核带横跨一个切段时不做任何事——切段已经注定要被删掉，标不标都没意义，而且
     在切段上标颜色只会让人以为那一刀还可以商量。
@@ -56,6 +59,11 @@ def mark_uncertain(
             continue
 
         holes = _clip_to(uncertain_intervals, segment.start, segment.end)
+        # 裁剪之后才量长度：被段边界削掉半截的带子才是用户实际会看到的那一根。
+        # 丢掉之后不用手动合并两侧——subtract_intervals 是按洞走的，少一个洞，
+        # 它跨过去的那一片就是连着的。
+        if min_duration > 0:
+            holes = [item for item in holes if item.end - item.start >= min_duration]
         if not holes:
             result.append(segment)
             continue

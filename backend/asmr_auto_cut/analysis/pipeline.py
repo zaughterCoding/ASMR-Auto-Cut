@@ -57,7 +57,11 @@ def assemble_project_state(
     # 复核带排在 refine 之后，因为它只给保留段换标签（见 timeline/review.py）。
     # 给 None 就是不开复核带——测量脚本走这条路，拿到的段落与带内时代逐位相同。
     if uncertain_intervals:
-        refined_segments = mark_uncertain(refined_segments, uncertain_intervals)
+        refined_segments = mark_uncertain(
+            refined_segments,
+            uncertain_intervals,
+            min_duration=config.vad_uncertain_min_duration_ms / 1000,
+        )
     return ProjectState(
         project_id=project_id,
         source=MediaSource(path=source_path, duration=duration),
