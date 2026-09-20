@@ -172,7 +172,10 @@ def score(segments, windows: list[Window]) -> Score:
             if seg.action != "keep":
                 continue
             kept += max(0.0, min(seg.end, hi) - max(seg.start, lo))
-        cut = window.duration - kept
+        # kept 是逐段累加出来的，而 hi = start + duration 再减 start 在浮点上不恒等于
+        # duration，于是窗口没被切时这里会差出 -1e-13 这种负零，累计后打印成「-0.0s」。
+        # 切掉的秒数物理上不可能是负的，夹一下——它是显示口径，钳位不改变任何真实量。
+        cut = max(0.0, window.duration - kept)
         cut_total += cut
         if window.truth in WANT_KEEP:
             cut_wrong += cut
