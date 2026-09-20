@@ -59,6 +59,33 @@ body {
   cursor: not-allowed;
 }
 
+/* 复核档位：紧挨「分析」左边，只影响下一次分析 */
+.toolbar-review {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+}
+
+.toolbar-review select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #232838;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.toolbar-review select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolbar-hint {
+  font-size: 12px;
+}
+
 .toolbar-spacer {
   flex: 1;
 }

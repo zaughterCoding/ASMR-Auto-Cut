@@ -16,7 +16,7 @@ import { SummaryPanel } from "./components/SummaryPanel";
 import { TimelineWorkspace } from "./components/TimelineWorkspace";
 import { Toolbar } from "./components/Toolbar";
 import { useProjectStore } from "./state/projectStore";
-import type { OperationProgress, ProjectState } from "./types";
+import type { OperationProgress, ProjectState, ReviewLevel } from "./types";
 
 const MEDIA_EXTENSIONS = ["mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "mp4", "mkv", "flv", "ts", "mov"];
 
@@ -75,6 +75,9 @@ export function App() {
   const [status, setStatus] = useState("就绪");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<OperationProgress | null>(null);
+  // 复核细致程度，只喂给下一次分析。它是「这次我愿意花多少时间复核」的声明，
+  // 存在这里而不是项目里——同一个项目换个心情重跑一遍，本来就该能换一档。
+  const [review, setReview] = useState<ReviewLevel>("standard");
 
   const project = useProjectStore((state) => state.project);
   const projectPath = useProjectStore((state) => state.projectPath);
@@ -161,7 +164,7 @@ export function App() {
     const result = await run("分析", async () => {
       const projectsRoot = await projectsRootPath();
       const projectDir = await resolveProjectDir(projectsRoot, sourcePath);
-      const state = await analyzeSource(sourcePath, projectDir);
+      const state = await analyzeSource(sourcePath, projectDir, review);
       // 编辑器改的是 segments.json，导出 CLI 读的也是它；project.json 留作分析记录
       setProject(state, `${projectDir}\\segments.json`);
       setWaveform(await loadWaveform(projectDir));
@@ -228,6 +231,8 @@ export function App() {
         canAnalyze={sourcePath !== null}
         canSave={project !== null && projectPath !== null}
         canExport={project !== null && projectPath !== null}
+        review={review}
+        onReviewChange={setReview}
       />
       <div className="workspace">
         <div className="workspace-main">

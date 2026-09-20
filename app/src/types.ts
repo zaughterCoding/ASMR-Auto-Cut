@@ -1,6 +1,12 @@
 export type SegmentLabel = "asmr" | "talk" | "inactive" | "uncertain";
 export type SegmentAction = "keep" | "cut";
 
+/**
+ * 分析前要选的复核细致程度，决定多宽的「拿不准」会被标成 uncertain 给人听。
+ * 取值要和后端 config.REVIEW_BANDS 的键一致，后端会校验。
+ */
+export type ReviewLevel = "quick" | "standard" | "thorough";
+
 export interface MediaSource {
   path: string;
   duration: number;

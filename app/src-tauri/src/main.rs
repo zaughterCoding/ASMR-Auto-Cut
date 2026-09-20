@@ -111,6 +111,7 @@ fn analyze_source(
     app: AppHandle,
     source_path: String,
     project_dir: String,
+    review: String,
 ) -> Result<String, String> {
     let binary = backend_binary();
     run_backend_with_progress(
@@ -121,6 +122,10 @@ fn analyze_source(
             &source_path,
             "--project-dir",
             &project_dir,
+            // 复核细致程度：决定多宽的「拿不准」会被标出来给人听。取值由后端校验，
+            // 前端只是把人选的那一档原样转发，档位定义以后端 config.REVIEW_BANDS 为准。
+            "--review",
+            &review,
             "--progress-json",
         ],
     )?;

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { OperationProgress, ProjectState, WaveformPoint } from "../types";
+import type { OperationProgress, ProjectState, ReviewLevel, WaveformPoint } from "../types";
 
 /**
  * 订阅后端进度。事件由 Rust 侧在逐行读后端 stdout 时转发，名字要和那边
@@ -39,8 +39,9 @@ export async function projectsRootPath(): Promise<string> {
 export async function analyzeSource(
   sourcePath: string,
   projectDir: string,
+  review: ReviewLevel,
 ): Promise<ProjectState> {
-  const raw = await invoke<string>("analyze_source", { sourcePath, projectDir });
+  const raw = await invoke<string>("analyze_source", { sourcePath, projectDir, review });
   return parseProjectState(raw);
 }
 

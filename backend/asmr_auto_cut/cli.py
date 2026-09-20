@@ -6,7 +6,7 @@ import typer
 
 from asmr_auto_cut import __version__
 from asmr_auto_cut.analysis.pipeline import analyze_source
-from asmr_auto_cut.config import AnalysisConfig
+from asmr_auto_cut.config import DEFAULT_REVIEW_BAND, REVIEW_BANDS, AnalysisConfig
 from asmr_auto_cut.export.ffmpeg_export import ExportMode, export_clean_media
 from asmr_auto_cut.progress import ResultEvent, emit_json_event
 from asmr_auto_cut.timeline.io import load_project_state
@@ -14,6 +14,10 @@ from asmr_auto_cut.timeline.io import load_project_state
 app = typer.Typer(no_args_is_help=True)
 
 EXPORT_MODES = ("quality", "fast")
+
+#: 复核细致程度的三档，顺序即由粗到细。从 REVIEW_BANDS 派生而不是另抄一份——
+#: 两处各写一遍，早晚会有一处忘了改，而症状是「某个档位在命令行里不存在」。
+REVIEW_LEVELS = tuple(REVIEW_BANDS)
 
 
 def _enable_utf8_output() -> None:
@@ -48,15 +52,24 @@ def main(
 def analyze(
     source: Path,
     project_dir: Path = typer.Option(..., "--project-dir"),
+    review: str = typer.Option(
+        DEFAULT_REVIEW_BAND,
+        "--review",
+        help=f"Review depth ({', '.join(REVIEW_LEVELS)}): how much audio to flag for a "
+             "listen. Quicker to review, or less likely to miss quiet speech.",
+    ),
     progress_json: bool = typer.Option(False, "--progress-json"),
 ) -> None:
+    # 和 --mode 同款：str + 手工校验，不用 Literal（见 export 里的说明）。
+    if review not in REVIEW_BANDS:
+        raise typer.BadParameter(f"review must be one of {', '.join(REVIEW_LEVELS)}")
     if progress_json:
         _enable_utf8_output()
     progress = emit_json_event if progress_json else None
     state = analyze_source(
         source=source,
         project_dir=project_dir,
-        config=AnalysisConfig(),
+        config=AnalysisConfig(vad_uncertain_threshold=REVIEW_BANDS[review]),
         progress=progress,
     )
     if progress_json:
