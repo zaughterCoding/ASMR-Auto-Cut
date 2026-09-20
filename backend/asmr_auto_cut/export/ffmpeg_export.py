@@ -46,11 +46,29 @@ def _report(
 
 
 def build_keep_clips(state: ProjectState) -> list[ExportClip]:
-    return [
-        ExportClip(start=segment.start, end=segment.end)
-        for segment in state.segments
-        if segment.action == "keep"
-    ]
+    """把保留段合成 clip，**首尾相接的合成一个**。
+
+    不能一个保留段一个 clip。每个 clip 在 quality 模式下首尾各拿一个 30ms 的
+    afade，所以 clip 的边界是要花钱的（接缝处一个 60ms 的凹陷）。而保留段并不
+    总是被切段隔开：复核带会把一个保留段切成 [asmr][uncertain][asmr] 这样首尾
+    相接的几片（见 timeline/review.py），它们底下的音频是连续的，切开导出等于
+    在连续的内容中间凭空插进若干次渐变——实测 minase 选「细致」档时保留段从 36
+    涨到 309，也就是 273 处这样的接缝，全都落在耳语中间。
+
+    合并之后 clip 数回到「不开复核带」时的数量：复核带只改高亮，不改音频的连续
+    段落在哪里，所以它本来就不该影响导出切几刀。
+    """
+    clips: list[ExportClip] = []
+    for segment in state.segments:
+        if segment.action != "keep":
+            continue
+        if clips and segment.start <= clips[-1].end:
+            # 相接（或由于浮点误差略微重叠）就并进上一段。段与段是平铺的，正常
+            # 情况下 start 正好等于上一段的 end。
+            clips[-1] = ExportClip(start=clips[-1].start, end=max(clips[-1].end, segment.end))
+            continue
+        clips.append(ExportClip(start=segment.start, end=segment.end))
+    return clips
 
 
 def _clip_command(
