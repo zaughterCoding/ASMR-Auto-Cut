@@ -24,6 +24,29 @@ def test_build_keep_clips_uses_edited_actions():
     assert [(clip.start, clip.end) for clip in clips] == [(0.0, 2.0), (2.0, 4.0)]
 
 
+def test_build_keep_clips_exports_uncertain_segments():
+    """uncertain 是「保留，但请你听一遍」，所以它必须进成品。
+
+    这里防的是一张标签白名单：如果哪天导出改成「只认某个标签列表」，uncertain
+    会被整段丢掉，而丢掉的恰好是复核步骤专门挑出来给用户听的那部分音频——
+    出错时没有任何异常，只是成品里安静地少了东西，用户很难发现。
+    """
+    state = ProjectState(
+        project_id="demo",
+        source=MediaSource(path="input.mp4", duration=8.0),
+        segments=[
+            TimelineSegment(id="seg_1", start=0.0, end=2.0, label="asmr", action="keep", confidence=1, source="test"),
+            TimelineSegment(id="seg_2", start=2.0, end=4.0, label="uncertain", action="keep", confidence=0.3, source="silero_vad_band"),
+            TimelineSegment(id="seg_3", start=4.0, end=6.0, label="talk", action="cut", confidence=1, source="test"),
+            TimelineSegment(id="seg_4", start=6.0, end=8.0, label="uncertain", action="keep", confidence=0.3, source="silero_vad_band"),
+        ],
+    )
+
+    clips = build_keep_clips(state)
+
+    assert [(clip.start, clip.end) for clip in clips] == [(0.0, 2.0), (2.0, 4.0), (6.0, 8.0)]
+
+
 def test_clip_command_applies_fades_around_the_requested_window():
     command = _clip_command(
         "input.mp4", ExportClip(10.0, 40.0), "clip.mp4", DEFAULT_FADE_SECONDS, "quality"
