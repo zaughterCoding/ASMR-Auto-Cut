@@ -125,6 +125,33 @@ describe("reviewStatus", () => {
     });
   });
 
+  it("walks a realistic queue head to tail without skipping or repeating", () => {
+    // 上面那些用例都只有三段，测不出「用户到底点不点得完」。复核带在一条 70 分钟
+    // 录音上能标出几百段，所以按那个规模铺一遍：300 段待听，每段被一段 asmr 隔开。
+    // 从队首一路点「下一段」，走过的必须正好是队列本身——顺序不变、不重不漏，
+    // 并且最后一定停下来（不会绕回队首无限转）。
+    const many: TimelineSegment[] = [];
+    for (let index = 0; index < 300; index += 1) {
+      many.push(seg(`k${index}`, index * 10, index * 10 + 1));
+      many.push(seg(`s${index}`, index * 10 + 1, index * 10 + 10, "asmr"));
+    }
+
+    const walked: string[] = [];
+    let current: TimelineSegment | null = null;
+    for (let step = 0; step < 1000; step += 1) {
+      const { nextId } = reviewStatus(many, current);
+      if (nextId === null) break;
+      current = many.find((item) => item.id === nextId) ?? null;
+      if (current === null) break;
+      walked.push(current.id);
+    }
+
+    expect(walked).toEqual(reviewQueue(many).map((item) => item.id));
+    expect(walked).toHaveLength(300);
+    // 走到最后一段之后就没有下一段了，循环是靠 nextId 变 null 退出的
+    expect(reviewStatus(many, current).nextId).toBeNull();
+  });
+
   it("disables both directions once the queue is cleared", () => {
     const cleared = segments.map((item) =>
       item.label === "uncertain" ? { ...item, label: "asmr" as const } : item,
