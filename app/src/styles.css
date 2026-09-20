@@ -436,20 +436,26 @@ body {
   opacity: 0.45;
 }
 
-.zoom-editbar {
+/* 编辑栏和复核导航是同一排长相：左边一段读数，右边几个按钮。
+   两排共用一套尺寸是有意的——读数都是变宽的（时间区间会变、待听序号会变），
+   靠 min-width + tabular-nums 把它们各自钉住，两排的按钮就自然对齐成一列。 */
+.zoom-editbar,
+.review-nav {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 8px;
 }
 
-.zoom-editbar span {
+.zoom-editbar span,
+.review-nav span {
   min-width: 150px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
-.zoom-editbar button {
+.zoom-editbar button,
+.review-nav button {
   padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -464,9 +470,16 @@ body {
   background: #2b3a44;
 }
 
-.zoom-editbar button:disabled {
+.zoom-editbar button:disabled,
+.review-nav button:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* 悬停只在可点时提亮，禁用态不提亮——「下一段」变灰就是「听完了」的信号，
+   鼠标扫过还亮起来会让人以为点了有用 */
+.review-nav button:hover:not(:disabled) {
+  border-color: var(--accent);
 }
 
 .timeline-playhead {

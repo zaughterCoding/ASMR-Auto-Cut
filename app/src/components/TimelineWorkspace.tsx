@@ -3,6 +3,7 @@ import type { TimeRange } from "../timeline/timeRange";
 import { normalizeRange } from "../timeline/timeRange";
 import type { ProjectState, TimelineSegment, WaveformPoint } from "../types";
 import { OverviewTimeline } from "./OverviewTimeline";
+import { ReviewNav } from "./ReviewNav";
 import { ZoomEditBar } from "./ZoomEditBar";
 import { ZoomTimeline } from "./ZoomTimeline";
 
@@ -20,6 +21,10 @@ interface Props {
 
 /** 没选中任何片段时，缩放视图先给出开头这么多秒。 */
 const DEFAULT_RANGE_SECONDS = 60;
+
+/** 没有项目时给 ReviewNav 一个稳定身份的空数组：字面量 [] 每次都换新数组，
+ * 会让它的 useMemo 每轮重建。 */
+const NO_SEGMENTS: TimelineSegment[] = [];
 
 /** 选中片段时前后各留出片段长度的一半（至少 2 秒）作为上下文。 */
 function focusRange(segment: TimelineSegment, duration: number): TimeRange {
@@ -112,6 +117,11 @@ export function TimelineWorkspace({
         playheadSeconds={playheadSeconds}
       />
       <ZoomEditBar segment={selectedSegment} onChange={onUpdateSegment} />
+      <ReviewNav
+        segments={project?.segments ?? NO_SEGMENTS}
+        selectedSegment={selectedSegment}
+        onSelectSegment={onSelectSegment}
+      />
     </section>
   );
 }
