@@ -11,6 +11,7 @@ from asmr_auto_cut.progress import ProgressEvent
 from asmr_auto_cut.timeline.intervals import RawInterval, build_segments, merge_cut_intervals
 from asmr_auto_cut.timeline.io import save_project_state
 from asmr_auto_cut.timeline.refine import refine_segments
+from asmr_auto_cut.timeline.review import mark_uncertain
 
 #: 分析的阶段总数。进度条要算百分比就得先知道总数，所以固定写死在这里，
 #: 每个阶段报数时都传它。改阶段顺序或增删阶段时这里要一起改。
