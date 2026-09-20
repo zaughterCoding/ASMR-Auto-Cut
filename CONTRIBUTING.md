@@ -8,7 +8,8 @@
 
 - 虚拟环境建在**仓库根目录**的 `.venv`，不是 `backend/` 下。
 - `ffmpeg` 和 `ffprobe` 必须在 PATH 上，后端分析和导出都靠它们。
-- 改动涉及 VAD 时需要装 `ml` extra，否则 `import silero_vad` 会失败。
+- 改动涉及 VAD 时需要装 `ml` extra（只有 `onnxruntime`）。Silero 的推理和切区间
+  代码在 `analysis/silero_onnx.py`，权重在 `asmr_auto_cut/assets/`，都不依赖 torch。
 
 ## 目录结构
 
@@ -21,6 +22,7 @@ backend/asmr_auto_cut/
   timeline/        区间运算、边界微调、JSON 读写
   export/          按时间轴切分并拼接
   evaluation/      与标注结果逐帧比对算指标
+  assets/          Silero 的 ONNX 权重（随包走）
 app/
   src/             React 前端
   src-tauri/       Tauri 壳，负责调用后端 CLI

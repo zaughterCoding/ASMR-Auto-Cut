@@ -11,11 +11,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.2"]
-# silero-vad 6.x 的 __init__.py 会无条件 import sequence_vad，而后者 import onnxruntime，
-# 但 onnxruntime 只声明在 onnx-cpu / onnx-gpu 这两个 extra 里。不装 onnxruntime
-# 的话连 `import silero_vad` 都会失败，所以这里必须带上 onnx-cpu extra。
-# torch/torchaudio 的 CUDA 版本要从 PyTorch 官方 index 单独装，见 README。
-ml = ["torch>=2.3", "silero-vad[onnx-cpu]>=5.1"]
+# 只要 onnxruntime。上游的 silero-vad 装不动——它把 torch>=1.12 和 torchaudio 写死在
+# 依赖里，连带 onnx 那条路也要（`load_silero_vad(onnx=True)` 的状态仍用 torch 张量存），
+# 而那份 torch 是 4.4G。模型文件和那 100 行切区间代码已经由 analysis/silero_onnx.py
+# 接手，权重放在 asmr_auto_cut/assets/ 里。
+ml = ["onnxruntime>=1.16"]
 
 [project.scripts]
 asmr-auto-cut = "asmr_auto_cut.cli:app"
@@ -26,6 +26,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["asmr_auto_cut*"]
+
+[tool.setuptools.package-data]
+# Silero 的 ONNX 权重随包走。2.3MB 进仓库是刻意的：clone 下来就该能跑，
+# 不该在第一次分析时才去某个 URL 上碰运气。
+asmr_auto_cut = ["assets/*.onnx"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

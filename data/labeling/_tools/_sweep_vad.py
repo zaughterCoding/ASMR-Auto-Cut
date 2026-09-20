@@ -274,10 +274,10 @@ def main() -> None:
 
     duration = probe_duration(src)
 
-    from silero_vad import load_silero_vad
+    from asmr_auto_cut.analysis.silero_onnx import SileroVad
 
     print("载入 Silero……\n")
-    model = load_silero_vad()
+    model = SileroVad()
 
     # pydantic 会把字符串按字段类型转好（"0.3" -> 0.3），不用在这儿手工 coerce
     base_config = AnalysisConfig(**overrides)

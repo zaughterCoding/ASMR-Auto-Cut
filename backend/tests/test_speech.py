@@ -1,23 +1,20 @@
-"""钉住「config 里的 VAD 参数真的传到了 Silero」，以及复核带只跑一趟模型。
+"""钉住「config 里的 VAD 参数真的传到了切区间那一刀」，以及复核带只跑一趟模型。
 
 这组参数的毛病不是会报错，而是**静默不生效**：早先一个都没传，全吃 Silero 的
 默认值，切出来的结果看着正常，只是和 ASMR 的说话形态对不上。没有这层测试的话，
 以后谁把某个 kwarg 写错名字，症状只会是「切得不太对」，没人查得出来。
 
-假模型是按**新**的调用面写的。我们不调 silero 的 `get_speech_timestamps`——它把
-「算概率」和「切区间」焊在一个函数里，要切两刀就得跑两遍模型，而那是全流程最贵的
-一步。现在自己逐窗算概率（模型的公开接口），再对同一串概率切两刀。所以假模型得
-支持 `reset_states` 和 `__call__`，而 `get_speech_timestamps_from_probs` 收的是
-一串现成的概率。
+假模型和假切区间都是按**我们自己的**调用面写的（`silero_onnx` 那两个）。上游那套
+对象协议已经不在了——理由见该模块的说明：要甩掉 torch 就得自己接手这两件事。
+所以这里替换的是 `speech` 模块里的名字，不是 `sys.modules["silero_vad"]`。
 """
 
-import sys
-import types
 from pathlib import Path
 
+import numpy as np
 import pytest
-import torch
 
+from asmr_auto_cut.analysis import speech
 from asmr_auto_cut.analysis.speech import (
     SAMPLE_RATE,
     WINDOW_SAMPLES,
@@ -34,44 +31,44 @@ WINDOWS = (AUDIO_SAMPLES + WINDOW_SAMPLES - 1) // WINDOW_SAMPLES
 FAKE_PROBABILITY = 0.5
 
 #: 窄的那一刀（确定是人声）和宽的那一刀（可能是人声）各返回什么。
-NARROW = [{"start": 1.5, "end": 3.25}]
-WIDE = [{"start": 1.0, "end": 3.5}, {"start": 8.0, "end": 9.0}]
+NARROW = [(1.5, 3.25)]
+WIDE = [(1.0, 3.5), (8.0, 9.0)]
 
 
 @pytest.fixture
-def fake_silero(monkeypatch):
-    """替掉 silero_vad 模块，把两次切区间的参数和模型的调用次数都记下来。"""
-    captured: dict = {"calls": [], "model_calls": 0}
-
-    class FakeProbability:
-        def item(self):
-            return FAKE_PROBABILITY
+def fake_vad(monkeypatch):
+    """替掉模型和切区间，把两次切区间的参数和模型的调用次数都记下来。"""
+    captured: dict = {"calls": [], "model_calls": 0, "built": 0}
 
     class FakeModel:
         def reset_states(self):
             captured["resets"] = captured.get("resets", 0) + 1
 
-        def __call__(self, chunk, sampling_rate):
+        def __call__(self, window):
             captured["model_calls"] += 1
-            return FakeProbability()
+            return FAKE_PROBABILITY
 
     model = FakeModel()
 
-    def fake_get_speech_timestamps_from_probs(probs, **kwargs):
+    def build():
+        captured["built"] += 1
+        return model
+
+    def fake_timestamps(probs, **kwargs):
         captured["calls"].append(kwargs)
         captured["probs"] = probs
         return NARROW if kwargs["threshold"] >= 0.5 else WIDE
 
-    module = types.ModuleType("silero_vad")
-    module.get_speech_timestamps_from_probs = fake_get_speech_timestamps_from_probs
-    module.load_silero_vad = lambda: model
-    module.read_audio = lambda path, sampling_rate: torch.zeros(AUDIO_SAMPLES)
-    monkeypatch.setitem(sys.modules, "silero_vad", module)
+    monkeypatch.setattr(speech, "SileroVad", build)
+    monkeypatch.setattr(speech, "speech_timestamps_from_probs", fake_timestamps)
+    monkeypatch.setattr(
+        speech, "load_analysis_audio", lambda path: np.zeros(AUDIO_SAMPLES, dtype="float32")
+    )
     return captured, model
 
 
-def test_vad_parameters_are_taken_from_config(fake_silero):
-    captured, _ = fake_silero
+def test_vad_parameters_are_taken_from_config(fake_vad):
+    captured, _ = fake_vad
     config = AnalysisConfig(
         vad_threshold=0.7,
         vad_uncertain_threshold=0.2,
@@ -89,8 +86,7 @@ def test_vad_parameters_are_taken_from_config(fake_silero):
     assert speech_pass["speech_pad_ms"] == 150
     # 采样率写死 16k 是 Silero 的硬要求，不跟着配置走
     assert speech_pass["sampling_rate"] == 16000
-    assert speech_pass["return_seconds"] is True
-    # 音频长度要显式传：silero 不知道我们切了几窗，默认值会按窗长向上取整，
+    # 音频长度要显式传：切区间那一刀不知道我们切了几窗，默认值会按窗长向上取整，
     # 末尾那段的时间戳就会飘出去。
     assert speech_pass["audio_length_samples"] == AUDIO_SAMPLES
     # 复核带那一刀只换阈值，其余一模一样
@@ -98,7 +94,7 @@ def test_vad_parameters_are_taken_from_config(fake_silero):
     assert band_pass["min_speech_duration_ms"] == 400
 
 
-def test_intervals_come_back_as_talk(fake_silero):
+def test_intervals_come_back_as_talk(fake_vad):
     detection = detect_speech(Path("analysis.wav"), AnalysisConfig())
 
     assert len(detection.speech) == 1
@@ -109,26 +105,22 @@ def test_intervals_come_back_as_talk(fake_silero):
     assert interval.confidence == FAKE_PROBABILITY
 
 
-def test_a_passed_in_model_is_reused(fake_silero, monkeypatch):
-    """扫描脚本要复用同一个实例，否则每组参数都要重新反序列化一遍权重。"""
-    captured, model = fake_silero
-    loaded = []
-    monkeypatch.setattr(
-        sys.modules["silero_vad"], "load_silero_vad", lambda: loaded.append(1) or model
-    )
+def test_a_passed_in_model_is_reused(fake_vad):
+    """扫描脚本要复用同一个实例，否则每组参数都要重建一次 onnxruntime 会话。"""
+    captured, model = fake_vad
 
     detect_speech(Path("analysis.wav"), AnalysisConfig(), model=model)
 
     assert captured["model_calls"] == WINDOWS
-    assert loaded == []
+    assert captured["built"] == 0
 
 
-def test_the_model_runs_once_even_though_the_band_cuts_twice(fake_silero):
+def test_the_model_runs_once_even_though_the_band_cuts_twice(fake_vad):
     """整个复核带就是靠这一条站住的：两刀，一趟模型。
 
     切两刀本身是纯 Python 过一遍概率数组，可以忽略；重新跑一遍模型才是分钟级开销。
     """
-    captured, _ = fake_silero
+    captured, _ = fake_vad
 
     detect_speech(Path("analysis.wav"), AnalysisConfig())
 
@@ -137,7 +129,7 @@ def test_the_model_runs_once_even_though_the_band_cuts_twice(fake_silero):
     assert captured["resets"] == 1
 
 
-def test_the_band_is_the_wide_pass_minus_the_speech_pass(fake_silero):
+def test_the_band_is_the_wide_pass_minus_the_speech_pass(fake_vad):
     detection = detect_speech(Path("analysis.wav"), AnalysisConfig())
 
     assert [(item.start, item.end) for item in detection.speech] == [(1.5, 3.25)]
@@ -149,9 +141,9 @@ def test_the_band_is_the_wide_pass_minus_the_speech_pass(fake_silero):
     assert all(item.label == "uncertain" for item in detection.uncertain)
 
 
-def test_no_band_when_the_lower_threshold_reaches_the_speech_one(fake_silero):
+def test_no_band_when_the_lower_threshold_reaches_the_speech_one(fake_vad):
     """下沿不低于上沿 = 关掉复核带，此时不该白切第二刀。"""
-    captured, _ = fake_silero
+    captured, _ = fake_vad
 
     detection = detect_speech(
         Path("analysis.wav"), AnalysisConfig(vad_threshold=0.5, vad_uncertain_threshold=0.5)
@@ -161,8 +153,21 @@ def test_no_band_when_the_lower_threshold_reaches_the_speech_one(fake_silero):
     assert detection.uncertain == []
 
 
-def test_detect_speech_intervals_returns_only_the_speech_pass(fake_silero):
+def test_detect_speech_intervals_returns_only_the_speech_pass(fake_vad):
     """测量脚本走的就是这个入口——复核带不能渗进它们的读数里。"""
     intervals = detect_speech_intervals(Path("analysis.wav"), AnalysisConfig())
     assert [item.label for item in intervals] == ["talk"]
     assert [(item.start, item.end) for item in intervals] == [(1.5, 3.25)]
+
+
+def test_a_wrong_sample_rate_is_refused_rather_than_silently_misaligned(tmp_path, monkeypatch):
+    """分析音频不是 16k 时必须报错，不能拿错窗长硬算。
+
+    窗长跟着采样率走，采样率不对时间戳就整体偏移，而这条链路上没有任何一步会因此
+    抛异常——切出来的东西看着正常，只是每一刀都错位。宁可在入口处拦下来。
+    """
+    monkeypatch.setattr(
+        speech, "load_mono_audio", lambda path: (np.zeros(8000, dtype="float32"), 8000)
+    )
+    with pytest.raises(ValueError, match="16000Hz"):
+        speech.load_analysis_audio(tmp_path / "analysis.wav")

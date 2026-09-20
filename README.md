@@ -115,6 +115,7 @@ python -m venv .venv
 
 # 带语音检测（Silero VAD）——分析功能必需，否则只能跑命令行骨架
 .\.venv\Scripts\python.exe -m pip install -e ".\backend[ml]"
+# ml 只装 onnxruntime（约 46MB）。模型权重随包走，不用另外下载。
 
 # 桌面端
 cd app
@@ -129,12 +130,6 @@ npm run tauri dev
 $env:ASMR_AUTO_CUT_BIN = "<仓库路径>\.venv\Scripts\asmr-auto-cut.exe"
 npm run tauri dev
 ```
-
-> **`torch` 装 CUDA 版**：PyPI 上的默认是 CPU 版。要用显卡加速得从 PyTorch 官方源装：
->
-> ```powershell
-> .\.venv\Scripts\python.exe -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
-> ```
 
 ## 命令行
 

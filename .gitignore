@@ -5,6 +5,8 @@ docs/
 __pycache__/
 *.py[cod]
 *.egg-info/
+# setuptools 打 wheel 时的中转目录（pip wheel / python -m build）
+build/
 .venv/
 venv/
 .pytest_cache/

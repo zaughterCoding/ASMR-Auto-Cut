@@ -170,7 +170,7 @@ def main() -> None:
     check_configs_share_vad()
 
     names = args or sorted(materials())
-    from silero_vad import load_silero_vad
+    from asmr_auto_cut.analysis.silero_onnx import SileroVad
 
     for name in names:
         _, material = load(name)
@@ -184,7 +184,7 @@ def main() -> None:
         duration = probe_duration(material["src"])
 
         print("\n载入 Silero……")
-        model = load_silero_vad()
+        model = SileroVad()
         ablate(material, wav, duration, model)
 
         if not keep_audio:
