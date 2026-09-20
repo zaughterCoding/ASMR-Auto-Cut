@@ -10,7 +10,7 @@ const PRESETS: { label: TimelineSegment["label"]; action: TimelineSegment["actio
   { label: "asmr", action: "keep", text: "ASMR / KEEP" },
   { label: "talk", action: "cut", text: "TALK / CUT" },
   { label: "inactive", action: "cut", text: "INACTIVE / CUT" },
-  { label: "uncertain", action: "cut", text: "UNCERTAIN / CUT" },
+  { label: "uncertain", action: "keep", text: "UNCERTAIN / KEEP" },
 ];
 
 /**
