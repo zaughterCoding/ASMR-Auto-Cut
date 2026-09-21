@@ -37,6 +37,17 @@ dist/
 # Tauri / Rust
 app/src-tauri/target/
 
+# 打包资源：内容由构建产出（PyInstaller 产物、下载的 ffmpeg），
+# 但目录骨架必须进版本管理——tauri-build 对「不存在的 resources 路径」
+# 是硬报错，不是静默跳过，缺了目录连 `tauri dev` 都编译不过。
+app/src-tauri/resources/backend/*
+!app/src-tauri/resources/backend/.gitkeep
+app/src-tauri/resources/ffmpeg/*
+!app/src-tauri/resources/ffmpeg/.gitkeep
+
+# 构建期的下载缓存（ffmpeg 压缩包等），不是产物
+.cache/
+
 # 编辑器与系统
 .vscode/
 .idea/
