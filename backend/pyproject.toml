@@ -11,7 +11,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.2"]
+# pyinstaller 是打包工具，不进运行时依赖：只有 backend/packaging/ 下的 spec 用得到。
+dev = ["pytest>=8.2", "pyinstaller>=6.0"]
 # 只要 onnxruntime。上游的 silero-vad 装不动——它把 torch>=1.12 和 torchaudio 写死在
 # 依赖里，连带 onnx 那条路也要（`load_silero_vad(onnx=True)` 的状态仍用 torch 张量存），
 # 而那份 torch 是 4.4G。模型文件和那 100 行切区间代码已经由 analysis/silero_onnx.py
