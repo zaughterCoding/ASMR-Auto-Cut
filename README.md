@@ -101,9 +101,30 @@ ffmpeg -i input.flv -vn -c:a aac output.m4a
 
 ## 安装
 
-需要 `ffmpeg` 和 `ffprobe` 在 PATH 上，这两个是硬性依赖，界面和命令行都要用。
+### 从安装包运行
+
+跑 `app` 的 `bundle` 打出来的 msi 或 nsis 安装包，装完就能用，目标机器上
+**不需要 Python、不需要 ffmpeg、也不需要联网**——后端和 ffmpeg 都在包里。
+
+两件装完才知道的事：
+
+1. **第一次启动会让你选一个数据目录。** 项目的中间产物（`analysis.wav`，8 小时录音
+   约 0.9GB）和导出成片都往那儿落，所以默认不替你决定写哪儿。选过之后记在
+   `%APPDATA%\com.asmrautocut.desktop\config.json`，重启不再问。取消掉也没关系：
+   工具栏会留一个「选择数据目录」按钮，「分析」在那之前是禁用的。
+2. **想要一个确定的位置，就设 `ASMR_AUTO_CUT_DATA`。** 它的优先级高于上面那个配置文件，
+   批处理时用它最省事。
+
+从命令行用安装目录里的后端（做批处理、或者界面上没提供的参数）：
+
+```powershell
+& "$env:LOCALAPPDATA\ASMR Auto Cut\backend\asmr-auto-cut.exe" analyze input.mp4 --project-dir E:\data\example
+```
 
 ### 从源码运行
+
+需要 `ffmpeg` 和 `ffprobe` 在 PATH 上，这两个是硬性依赖，界面和命令行都要用。
+（安装版把 ffmpeg 打在包里，只有从源码跑才需要自己准备。）
 
 ```powershell
 git clone <仓库地址>
@@ -222,23 +243,44 @@ data/projects/example/
 
 ```powershell
 cd app
-npm run tauri build
+npm run bundle          # = freeze:backend + tauri build
 ```
 
-Windows 上实测（首次 release 编译 1 分 41 秒；依赖都编好之后再编 1 分 10 秒）：
+`freeze:backend` 先用 PyInstaller 把后端冻成 `src-tauri/resources/backend/`（onedir，
+约 98 MB），`tauri build` 再把它和 ffmpeg 一起打进安装包。两个资源目录都由
+`tauri.conf.json` 的 `bundle.resources` 声明。
+
+**两者不在 `beforeBuildCommand` 里串起来**：那样每次 `tauri build` 都要白跑一遍
+40 秒的 PyInstaller。资源没冻的话构建会以 `ResourcePathNotFound` 明确失败，不会
+悄悄打出一个空壳包。
+
+前提条件（一次性）：
+
+```powershell
+# PyInstaller 装进现有 .venv
+.\.venv\Scripts\python.exe -m pip install -e ".\backend[dev]"
+
+# ffmpeg LGPL 构建，钉死版本号，下载到 .cache/ 再平铺进 resources/ffmpeg/
+powershell -File app\scripts\vendor-ffmpeg.ps1
+```
+
+体积（Windows 实测）：
 
 | 产物 | 大小 |
 |---|---|
-| `target/release/asmr-auto-cut.exe` | 8.8 MB |
-| `bundle/msi/ASMR Auto Cut_0.2.0_x64_en-US.msi` | 2.9 MB |
-| `bundle/nsis/ASMR Auto Cut_0.2.0_x64-setup.exe` | 1.9 MB |
+| `target/release/asmr-auto-cut.exe`（界面外壳） | 8.8 MB |
+| `src-tauri/resources/backend/`（冻结后端） | 98.6 MB |
+| `src-tauri/resources/ffmpeg/`（LGPL 构建） | 147.6 MB |
+| `bundle/msi/ASMR Auto Cut_0.4.0_x64_en-US.msi` | **108.0 MB** |
+| `bundle/nsis/ASMR Auto Cut_0.4.0_x64-setup.exe` | **81.4 MB** |
 
-> ⚠️ **现在打出来的安装包不能开箱即用。** 它只装了界面外壳，没有带后端，也没有带
-> ffmpeg。目标机器上仍然需要自己准备：Python 3.11+、装好 `asmr-auto-cut` 后端包、
-> ffmpeg 在 PATH 上。桌面端是按名字 `asmr-auto-cut` 从 PATH 找后端的，找不到就无法分析。
->
-> 要让安装包能直接发给别人用，得把后端打成单文件可执行程序一起分发——这部分 V1
-> 没有做，是目前最明显的缺口。
+装完占 **256.9 MiB**（139 个文件）。后端和 ffmpeg 加起来 246 MB，压缩后就是安装包的大小
+——**这是「装完就能用」的代价**，没得省：`onnxruntime` 一个就 35.8 MB，numpy 的 BLAS
+20.2 MB，Python 运行时再加约 18 MB。NSIS 比 MSI 小 26.6 MB 是压缩算法不同，装的东西一样。
+
+以上数字来自一次完整的实测（`npm run bundle` → MSI 管理安装 → 69 分钟真实素材端到端），
+逐项记录在 `docs/verification/0.4.0-packaging.md`。**`docs/` 不进版本管理**，所以那个路径
+在克隆下来的仓库里是空的——需要细节就直接问，或者照上面的表自己复现一遍。
 
 ## 评估
 
@@ -284,4 +326,21 @@ npm test
 
 ## 许可证
 
-[MIT](LICENSE)
+本项目是 [MIT](LICENSE)。
+
+安装包内还打包了第三方组件，各自的许可证随二进制一起分发：
+
+| 组件 | 许可证 | 说明 |
+|---|---|---|
+| FFmpeg（`ffmpeg.exe` / `ffprobe.exe` + 若干 DLL） | **LGPLv3** | [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) 的 `win64-lgpl-shared` 构建；完整许可证文本见安装目录下的 `ffmpeg\LICENSE.txt` |
+| Silero VAD（`silero_vad.onnx`） | MIT | 模型权重，随 Python 包一起分发 |
+| ONNX Runtime | MIT | 语音检测的推理运行时 |
+| Python 运行时与各依赖 | PSF / MIT / BSD 等 | 由 PyInstaller 冻结，许可证见各自项目 |
+
+FFmpeg 选的是 **LGPL 构建而不是 GPL**：本项目只用到 `-c:v copy`、`-c:a aac`、
+`afade`、`concat`，全部落在 LGPL 覆盖的范围内，不需要任何 GPL 编码器。LGPLv3 要求
+随二进制提供许可证文本和源码获取方式，两者分别对应安装目录里的 `ffmpeg\LICENSE.txt`
+和上面的 BtbN 构建仓库地址。
+
+构建这套包的脚本在 `app/scripts/` 下，钉死了版本号，可以复现：`vendor-ffmpeg.ps1`
+拉 ffmpeg，`freeze-backend.ps1` 冻结后端。
