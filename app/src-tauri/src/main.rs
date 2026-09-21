@@ -3,17 +3,42 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
-/// 后端 CLI 的可执行文件名。
+/// 后端 CLI 可执行文件的路径，三级顺序从最具体到最兜底：
 ///
-/// 默认从 PATH 查找 `asmr-auto-cut`；开发环境下它通常只装在项目 venv 的
-/// Scripts 目录里、并没有进 PATH，这时用 `ASMR_AUTO_CUT_BIN` 指过去即可。
-fn backend_binary() -> String {
-    std::env::var("ASMR_AUTO_CUT_BIN").unwrap_or_else(|_| "asmr-auto-cut".to_string())
+/// 1. `ASMR_AUTO_CUT_BIN` —— 覆盖入口，永远最先看。开发环境下后端通常只装在项目
+///    venv 的 Scripts 目录里、并没有进 PATH，靠它指过去。
+/// 2. 安装目录下的 `backend/asmr-auto-cut.exe` —— **只在非开发构建下启用**。
+///    dev 下这个文件同样存在（`tauri-build` 会把 `bundle.resources` 复制进
+///    `target/debug/`），优先用它就会绕开 venv 里的可编辑安装：改一行 Python
+///    却看不到任何变化，是最难查的一类问题。
+/// 3. 裸命令名交给 PATH —— 开发环境的原有行为。
+///
+/// 第 2 步找不到文件时**继续往下退而不是报错**：装了个只带壳的旧版安装包时，
+/// 退回 PATH 至少还能给出可读的提示。
+fn backend_binary(app: &AppHandle) -> PathBuf {
+    if let Ok(configured) = std::env::var("ASMR_AUTO_CUT_BIN") {
+        return PathBuf::from(configured);
+    }
+    if !tauri::is_dev() {
+        if let Ok(resource_dir) = app.path().resource_dir() {
+            let name = if cfg!(windows) {
+                "asmr-auto-cut.exe"
+            } else {
+                "asmr-auto-cut"
+            };
+            let candidate = resource_dir.join("backend").join(name);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    // 不带 .exe：Windows 会按 PATHEXT 补全，这正是 0.4.0 之前的行为。
+    PathBuf::from("asmr-auto-cut")
 }
 
-fn backend_command(binary: &str) -> Command {
+fn backend_command(binary: &Path) -> Command {
     let mut command = Command::new(binary);
     // GUI 进程调起控制台子进程时，Windows 会弹一个黑窗，这里抑制掉。
     #[cfg(windows)]
@@ -35,7 +60,7 @@ fn backend_command(binary: &str) -> Command {
 /// Option 而不是直接报错。
 fn run_backend_with_progress(
     app: &AppHandle,
-    binary: &str,
+    binary: &Path,
     args: &[&str],
 ) -> Result<Option<serde_json::Value>, String> {
     let mut child = backend_command(binary)
@@ -45,8 +70,10 @@ fn run_backend_with_progress(
         .spawn()
         .map_err(|error| {
             format!(
-                "无法执行 `{binary}`: {error}\n请把后端的 asmr-auto-cut 加入 PATH，\
-                 或设置环境变量 ASMR_AUTO_CUT_BIN 指向它的绝对路径。"
+                "无法执行 `{}`: {error}\n安装版会在程序同级的 backend/ 目录里找后端；\
+                 开发时请把后端的 asmr-auto-cut 加入 PATH，\
+                 或设置环境变量 ASMR_AUTO_CUT_BIN 指向它的绝对路径。",
+                binary.display()
             )
         })?;
 
@@ -94,7 +121,8 @@ fn run_backend_with_progress(
     let stderr = stderr_reader.join().unwrap_or_default();
     if !status.success() {
         return Err(format!(
-            "`{binary} {}` 执行失败: {}",
+            "`{} {}` 执行失败: {}",
+            binary.display(),
             args.join(" "),
             stderr.trim()
         ));
@@ -113,7 +141,7 @@ fn analyze_source(
     project_dir: String,
     review: String,
 ) -> Result<String, String> {
-    let binary = backend_binary();
+    let binary = backend_binary(&app);
     run_backend_with_progress(
         &app,
         &binary,
@@ -197,7 +225,7 @@ fn export_project(
     project_path: String,
     output_path: String,
 ) -> Result<String, String> {
-    let binary = backend_binary();
+    let binary = backend_binary(&app);
     run_backend_with_progress(
         &app,
         &binary,
