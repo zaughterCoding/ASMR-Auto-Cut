@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from asmr_auto_cut.media.ffmpeg import ensure_ffmpeg_available, run_command
+from asmr_auto_cut.media.ffmpeg import ensure_ffmpeg_available, run_command, tool_path
 from asmr_auto_cut.models import ProjectState
 from asmr_auto_cut.progress import ProgressEvent
 
@@ -87,7 +87,7 @@ def _clip_command(
     # 且不必从头解码整条长录音。
     # 视频轨用 copy 不重编码；0:v? 里的 ? 让纯音频源也能走同一条命令。
     command = [
-        "ffmpeg",
+        tool_path("ffmpeg"),
         "-y",
         "-ss",
         f"{clip.start:.3f}",
@@ -156,7 +156,7 @@ def export_clean_media(
         _report(progress, "concat_clips", "正在合并片段", total - 1, total)
         run_command(
             [
-                "ffmpeg",
+                tool_path("ffmpeg"),
                 "-y",
                 "-f",
                 "concat",

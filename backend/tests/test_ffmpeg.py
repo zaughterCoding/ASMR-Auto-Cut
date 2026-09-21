@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from asmr_auto_cut.media.ffmpeg import ensure_ffmpeg_available, run_command
+from asmr_auto_cut.media.ffmpeg import ensure_ffmpeg_available, run_command, tool_path
 
 # 让子进程往 stderr 吐两个非 UTF-8 字节再以非零码退出。0xad 是 GBK 解不了的字节，
 # 在中文 Windows 上 ffmpeg 报错信息里带本地代码页路径时就长这样。
@@ -40,3 +40,66 @@ def test_failing_command_still_reports_its_error():
 
     assert excinfo.value.returncode == 3
     assert excinfo.value.stderr == "��"
+
+
+@pytest.fixture
+def no_override(monkeypatch):
+    """默认没有 ASMR_AUTO_CUT_FFMPEG_DIR，否则本机设了会污染下面每条用例。"""
+    monkeypatch.delenv("ASMR_AUTO_CUT_FFMPEG_DIR", raising=False)
+
+
+def test_tool_path_falls_back_to_bare_name(monkeypatch, no_override):
+    """没打包、没覆盖时返回裸命令名，交给 PATH——开发环境的行为一字未改。"""
+    monkeypatch.delattr(sys, "frozen", raising=False)
+
+    assert tool_path("ffmpeg") == "ffmpeg"
+
+
+def test_tool_path_prefers_the_override(monkeypatch, tmp_path):
+    """显式覆盖永远最先看：本机那份 ffmpeg 不在安装目录布局里。"""
+    (tmp_path / "ffmpeg.exe").write_bytes(b"")
+    monkeypatch.setenv("ASMR_AUTO_CUT_FFMPEG_DIR", str(tmp_path))
+    monkeypatch.delattr(sys, "frozen", raising=False)
+
+    assert tool_path("ffmpeg") == str(tmp_path / "ffmpeg.exe")
+
+
+def test_tool_path_ignores_an_override_without_the_binary(monkeypatch, tmp_path, no_override):
+    """覆盖目录里没有这个二进制就当没设，继续往下退而不是报错。"""
+    monkeypatch.setenv("ASMR_AUTO_CUT_FFMPEG_DIR", str(tmp_path / "nonexistent"))
+    monkeypatch.delattr(sys, "frozen", raising=False)
+
+    assert tool_path("ffmpeg") == "ffmpeg"
+
+
+def test_tool_path_resolves_beside_an_installed_program(monkeypatch, no_override, tmp_path):
+    """冻结后：入口 exe 在 <安装目录>/backend/，ffmpeg 在 <安装目录>/ffmpeg/。
+
+    这一条钉的是「往上两级」——用 sys._MEIPASS 会落到 backend/_internal/，
+    往上两级就成了 backend/，拼出来的路径必然不存在。
+    """
+    install = tmp_path / "install"
+    backend = install / "backend"
+    backend.mkdir(parents=True)
+    (backend / "asmr-auto-cut.exe").write_bytes(b"")
+    (install / "ffmpeg").mkdir()
+    (install / "ffmpeg" / "ffmpeg.exe").write_bytes(b"")
+    (install / "ffmpeg" / "ffprobe.exe").write_bytes(b"")
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(backend / "asmr-auto-cut.exe"))
+
+    assert tool_path("ffmpeg") == str(install / "ffmpeg" / "ffmpeg.exe")
+    assert tool_path("ffprobe") == str(install / "ffmpeg" / "ffprobe.exe")
+
+
+def test_tool_path_falls_through_when_frozen_without_the_binary(monkeypatch, no_override, tmp_path):
+    """装了个只带壳的旧版安装包时，退回 PATH 至少还能给出可读提示。"""
+    backend = tmp_path / "install" / "backend"
+    backend.mkdir(parents=True)
+    (backend / "asmr-auto-cut.exe").write_bytes(b"")
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(backend / "asmr-auto-cut.exe"))
+
+    assert tool_path("ffmpeg") == "ffmpeg"
