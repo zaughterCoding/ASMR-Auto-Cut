@@ -12,7 +12,7 @@ timeline and fix what it got wrong, then exports the keepers as one file.
 
 It is deliberately **assistive, not automatic**. Whispered and lightly-touching ASMR is easy
 to mistake for speech, so a review pass is part of the workflow rather than an optional extra.
-![window](asserts/window.jpg)
+![window](assets/window.jpg)
 
 ## Features
 
@@ -29,7 +29,7 @@ to mistake for speech, so a review pass is part of the workflow rather than an o
   bound by disk speed, not by re-encoding.
 - **Command line included.** The backend is a standalone CLI. Batch it, script it, or use it
   without the GUI at all.
-![overview](asserts/overview.gif)
+![overview](assets/overview.gif)
 
 ## Install
 
