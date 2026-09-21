@@ -229,7 +229,7 @@ fn repo_root() -> Option<PathBuf> {
 /// 4. 都没有 -> `None`，由前端弹文件夹选择器。
 ///
 /// 与 `backend_binary()` 的分级是同一套思路：显式覆盖 > 自带位置 > 环境推断。
-fn projects_root_status(app: &AppHandle) -> Option<String> {
+fn resolve_projects_root(app: &AppHandle) -> Option<String> {
     if let Ok(configured) = std::env::var("ASMR_AUTO_CUT_DATA") {
         return Some(configured);
     }
@@ -252,7 +252,7 @@ fn projects_root_status(app: &AppHandle) -> Option<String> {
 /// 实际使用的数据目录。用户还没选过时退回到当前目录下的 `data/projects`，
 /// 至少不会是个错的相对路径——真正的选择流程由前端的首次运行引导负责。
 fn projects_root(app: &AppHandle) -> PathBuf {
-    match projects_root_status(app) {
+    match resolve_projects_root(app) {
         Some(root) => PathBuf::from(root),
         None => std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
@@ -271,8 +271,8 @@ fn projects_root_path(app: AppHandle) -> String {
 
 /// 已经定下来就返回那个路径，否则 `None`——前端据此决定要不要弹选择器。
 #[tauri::command]
-fn projects_root_status_command(app: AppHandle) -> Option<String> {
-    projects_root_status(&app)
+fn projects_root_status(app: AppHandle) -> Option<String> {
+    resolve_projects_root(&app)
 }
 
 /// 记下用户选的数据目录并建出来。返回规范化后的路径，前端直接用它。
@@ -350,7 +350,7 @@ fn main() {
             save_project,
             export_project,
             projects_root_path,
-            projects_root_status_command,
+            projects_root_status,
             set_projects_root
         ])
         .run(tauri::generate_context!())
