@@ -166,31 +166,131 @@ fn analyze_source(
     })
 }
 
-/// 项目数据的根目录，即设计文档 §14 的 `data/projects/`。
+/// 落盘的配置。目前只有一项，但配置文件本身是必须的：装在 C 盘的桌面端
+/// 不能把几小时的录音默认写到自己的安装目录下，得让用户挑一个盘。
 ///
-/// 前端拿不到仓库位置，只能由后端推。从当前目录往上找到同时含 `backend/` 和
-/// `app/` 的一层当作仓库根；`tauri dev` 的工作目录是 `app/src-tauri`，正好能命中。
-/// 找不到就退回到当前目录下的 `data/projects`，至少不会是错的相对路径。
-/// 用运行时查找而不是编译期常量，避免把开发机的绝对路径烧进二进制。
-fn projects_root() -> PathBuf {
-    if let Ok(configured) = std::env::var("ASMR_AUTO_CUT_DATA") {
-        return PathBuf::from(configured);
+/// `projects_root` 存 `String` 而不是 `PathBuf`：它来自 webview 里的 JS 字符串，
+/// 走一遍 `PathBuf` 再 `to_string_lossy` 会在非 UTF-8 路径上悄悄改写内容。
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct AppConfig {
+    #[serde(default)]
+    projects_root: Option<String>,
+}
+
+/// 配置文件的路径。Windows 上是 `%APPDATA%\com.asmrautocut.desktop\config.json`，
+/// 几百字节；几个 G 的项目数据由用户挑盘，不在这里。
+fn config_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|dir| dir.join("config.json"))
+}
+
+/// 读配置。**任何失败都当成「没配过」**——配置坏掉不该让程序起不来，
+/// 顶多让用户重选一次数据目录。
+fn load_config(app: &AppHandle) -> AppConfig {
+    config_path(app)
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
+    let path = config_path(app).ok_or("拿不到配置目录")?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("创建 {} 失败: {error}", parent.display()))?;
     }
-    let current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    for candidate in current.ancestors() {
-        if candidate.join("backend").is_dir() && candidate.join("app").is_dir() {
-            return candidate.join("data").join("projects");
+    let text = serde_json::to_string_pretty(config)
+        .map_err(|error| format!("序列化配置失败: {error}"))?;
+    std::fs::write(&path, text).map_err(|error| format!("写入 {} 失败: {error}", path.display()))
+}
+
+/// 从当前目录往上找仓库根：同时含 `backend/` 和 `app/` 的那一层。
+/// `tauri dev` 的工作目录是 `app/src-tauri`，正好能命中。
+/// 用运行时查找而不是编译期常量，避免把开发机的绝对路径烧进二进制。
+fn repo_root() -> Option<PathBuf> {
+    let current = std::env::current_dir().ok()?;
+    current
+        .ancestors()
+        .find(|candidate| candidate.join("backend").is_dir() && candidate.join("app").is_dir())
+        .map(Path::to_path_buf)
+}
+
+/// 项目数据根目录是否**已经定下来**；`None` 表示需要问用户要一个。
+///
+/// 四级顺序：
+///
+/// 1. `ASMR_AUTO_CUT_DATA` 环境变量，最高优先级，覆盖一切。
+/// 2. 用户上次选的那个（落盘的配置）。
+/// 3. **开发环境**下从 cwd 往上找仓库根，用仓库里的 `data/projects`——
+///    开发者不该每次启动都被问一遍。这一条只在 `is_dev()` 下生效，
+///    让打包版的行为是确定的：要么有配置，要么弹选择器。
+/// 4. 都没有 -> `None`，由前端弹文件夹选择器。
+///
+/// 与 `backend_binary()` 的分级是同一套思路：显式覆盖 > 自带位置 > 环境推断。
+fn projects_root_status(app: &AppHandle) -> Option<String> {
+    if let Ok(configured) = std::env::var("ASMR_AUTO_CUT_DATA") {
+        return Some(configured);
+    }
+    if let Some(saved) = load_config(app).projects_root {
+        return Some(saved);
+    }
+    if tauri::is_dev() {
+        if let Some(root) = repo_root() {
+            return Some(
+                root.join("data")
+                    .join("projects")
+                    .to_string_lossy()
+                    .to_string(),
+            );
         }
     }
-    current.join("data").join("projects")
+    None
+}
+
+/// 实际使用的数据目录。用户还没选过时退回到当前目录下的 `data/projects`，
+/// 至少不会是个错的相对路径——真正的选择流程由前端的首次运行引导负责。
+fn projects_root(app: &AppHandle) -> PathBuf {
+    match projects_root_status(app) {
+        Some(root) => PathBuf::from(root),
+        None => std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("data")
+            .join("projects"),
+    }
 }
 
 #[tauri::command]
-fn projects_root_path() -> String {
-    let root = projects_root();
+fn projects_root_path(app: AppHandle) -> String {
+    let root = projects_root(&app);
     // 让目录先存在，前端才好把它展示出来或往里放东西
     let _ = std::fs::create_dir_all(&root);
     root.to_string_lossy().to_string()
+}
+
+/// 已经定下来就返回那个路径，否则 `None`——前端据此决定要不要弹选择器。
+#[tauri::command]
+fn projects_root_status_command(app: AppHandle) -> Option<String> {
+    projects_root_status(&app)
+}
+
+/// 记下用户选的数据目录并建出来。返回规范化后的路径，前端直接用它。
+#[tauri::command]
+fn set_projects_root(app: AppHandle, path: String) -> Result<String, String> {
+    if path.trim().is_empty() {
+        return Err("数据目录不能为空".to_string());
+    }
+    let root = PathBuf::from(&path);
+    std::fs::create_dir_all(&root)
+        .map_err(|error| format!("无法创建 {}: {error}", root.display()))?;
+    save_config(
+        &app,
+        &AppConfig {
+            projects_root: Some(path.clone()),
+        },
+    )?;
+    Ok(path)
 }
 
 /// 读取项目目录下的 waveform.json 原始 JSON 文本。波形点数随录音时长增长，
@@ -249,7 +349,9 @@ fn main() {
             load_project,
             save_project,
             export_project,
-            projects_root_path
+            projects_root_path,
+            projects_root_status_command,
+            set_projects_root
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
