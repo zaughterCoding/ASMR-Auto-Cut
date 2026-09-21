@@ -55,7 +55,10 @@ cargo check
 
 ## 提交信息
 
-用中文写，第一行是简短的动作概述，正文说明**为什么**这么改，而不是复述改了哪几行。如果修改推翻了某个既有设计，把原因写清楚。
+**用英文写**（开源项目惯例，中文提交信息不合规范）。第一行是简短的动作概述，正文说明
+**为什么**这么改，而不是复述改了哪几行。如果修改推翻了某个既有设计，把原因写清楚。
+
+代码注释和文档仍然是中文，这两件事互不冲突。
 
 ## 提 PR 前
 
@@ -63,6 +66,12 @@ cargo check
 - 前端 `npm run build` 通过。
 - 新行为有对应的测试。这个项目里「加个测试」的成本很低，请顺手加上。
 - 不要提交 `docs/`、`data/`、构建产物——它们已在 `.gitignore` 里。
+
+打包相关的两个脚本在 `app/scripts/` 下（`vendor-ffmpeg.ps1` 拉 ffmpeg，`freeze-backend.ps1`
+冻结后端），`npm run bundle` 会把它们串起来。**ffmpeg 和 PyInstaller 产物本身不进版本管理**，
+进版本管理的是这两个钉死版本的脚本。改打包流程时注意 `resources/` 下的 `.gitkeep`：
+`tauri-build` 对不存在的 resources 路径是硬报错，而 PyInstaller 的 COLLECT 会把它删掉，
+所以 `freeze-backend.ps1` 每次都会补回去。
 
 ## 几处容易踩的坑
 
