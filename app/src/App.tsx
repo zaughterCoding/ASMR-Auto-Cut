@@ -117,15 +117,16 @@ export function App() {
   useEffect(() => {
     if (promptedForDataDir.current) return;
     promptedForDataDir.current = true;
-    projectsRootStatus()
-      .then((root) => {
-        if (root === null) {
-          setNeedsDataDir(true);
-          return chooseDataDir();
-        }
-        return undefined;
-      })
-      .catch((error) => setStatus(`读取数据目录失败：${errorText(error)}`));
+    // 用两参数的 then 而不是 .catch：后者会把 chooseDataDir 抛出的异常也一并算作
+    // 「读取数据目录失败」，而那是完全另一回事，文案会把人指错方向。
+    projectsRootStatus().then(
+      (root) => {
+        if (root !== null) return;
+        setNeedsDataDir(true);
+        void chooseDataDir();
+      },
+      (error) => setStatus(`读取数据目录失败：${errorText(error)}`),
+    );
   }, []);
 
   const selectedSegment =
@@ -177,7 +178,15 @@ export function App() {
    * 这样取消只是一个可恢复的状态，而不是把用户逼到只能强杀进程。
    */
   async function chooseDataDir() {
-    const picked = await open({ directory: true, multiple: false });
+    // 对话框本身也会失败（权限、系统策略），而它不在 run() 的包裹里；
+    // 不接住的话这里会变成一条没人处理的 rejection，界面上什么都不显示。
+    let picked: string | null;
+    try {
+      picked = await open({ directory: true, multiple: false });
+    } catch (error) {
+      setStatus(`打开文件夹选择器失败：${errorText(error)}`);
+      return;
+    }
     if (typeof picked !== "string") return;
     const saved = await run("设置数据目录", () => setProjectsRoot(picked));
     if (saved !== null) {
