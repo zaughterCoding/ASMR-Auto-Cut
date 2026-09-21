@@ -95,6 +95,13 @@ body {
   color: var(--text-dim) !important;
 }
 
+/* 首次运行缺数据目录时的引导按钮：这是当时唯一该点的东西，
+   所以让它比旁边那排普通按钮显眼——否则用户会先去点「分析」再撞墙。 */
+.toolbar-primary {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
 /* ---- 状态栏 ---- */
 
 .statusbar {

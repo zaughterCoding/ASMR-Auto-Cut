@@ -1,5 +1,5 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   analyzeSource,
   exportProject,
@@ -7,7 +7,9 @@ import {
   loadProject,
   loadWaveform,
   projectsRootPath,
+  projectsRootStatus,
   saveProject,
+  setProjectsRoot,
 } from "./api/backend";
 import { AudioPlayer } from "./components/AudioPlayer";
 import { ProgressBar } from "./components/ProgressBar";
@@ -78,6 +80,10 @@ export function App() {
   // 复核细致程度，只喂给下一次分析。它是「这次我愿意花多少时间复核」的声明，
   // 存在这里而不是项目里——同一个项目换个心情重跑一遍，本来就该能换一档。
   const [review, setReview] = useState<ReviewLevel>("standard");
+  // 后端还没定下数据目录。分析要往那儿落盘，所以这期间「分析」是禁用的。
+  const [needsDataDir, setNeedsDataDir] = useState(false);
+  // 首次运行只引导一次。热重载会让 effect 再跑一遍，不挡的话会弹出第二个对话框。
+  const promptedForDataDir = useRef(false);
 
   const project = useProjectStore((state) => state.project);
   const projectPath = useProjectStore((state) => state.projectPath);
@@ -104,6 +110,22 @@ export function App() {
       disposed = true;
       if (unlisten) unlisten();
     };
+  }, []);
+
+  // 首次运行引导：后端还没定下数据目录（安装版第一次启动就是这样）就问用户要一个。
+  // 只在挂载时查一次；ref 挡的是热重载——effect 会再跑一遍，不挡就会弹出第二个对话框。
+  useEffect(() => {
+    if (promptedForDataDir.current) return;
+    promptedForDataDir.current = true;
+    projectsRootStatus()
+      .then((root) => {
+        if (root === null) {
+          setNeedsDataDir(true);
+          return chooseDataDir();
+        }
+        return undefined;
+      })
+      .catch((error) => setStatus(`读取数据目录失败：${errorText(error)}`));
   }, []);
 
   const selectedSegment =
@@ -147,6 +169,23 @@ export function App() {
     }
   }
 
+  /**
+   * 让用户挑一个数据目录并落盘。
+   *
+   * 取消（`open` 返回 null）时**什么都不做**：不重开对话框、也不清掉
+   * needsDataDir。工具栏上那个「选择数据目录」按钮就是重新打开的入口，
+   * 这样取消只是一个可恢复的状态，而不是把用户逼到只能强杀进程。
+   */
+  async function chooseDataDir() {
+    const picked = await open({ directory: true, multiple: false });
+    if (typeof picked !== "string") return;
+    const saved = await run("设置数据目录", () => setProjectsRoot(picked));
+    if (saved !== null) {
+      setNeedsDataDir(false);
+      setStatus(`数据目录：${saved}`);
+    }
+  }
+
   async function handleImport() {
     // 对话框是交互式的，取消时返回 null，不能当成错误
     const picked = await open({
@@ -161,6 +200,9 @@ export function App() {
 
   async function handleAnalyze() {
     if (!sourcePath) return;
+    // 工具栏已经把按钮禁掉了，这里再挡一次：数据目录没定下来时 projects_root_path()
+    // 会退回到 cwd 下的相对路径，把几小时的项目数据悄悄写到安装目录旁边。
+    if (needsDataDir) return;
     const result = await run("分析", async () => {
       const projectsRoot = await projectsRootPath();
       const projectDir = await resolveProjectDir(projectsRoot, sourcePath);
@@ -231,6 +273,8 @@ export function App() {
         canAnalyze={sourcePath !== null}
         canSave={project !== null && projectPath !== null}
         canExport={project !== null && projectPath !== null}
+        needsDataDir={needsDataDir}
+        onChooseDataDir={chooseDataDir}
         review={review}
         onReviewChange={setReview}
       />

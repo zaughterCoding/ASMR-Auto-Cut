@@ -36,6 +36,19 @@ export async function projectsRootPath(): Promise<string> {
   return invoke<string>("projects_root_path");
 }
 
+/**
+ * 数据目录是否已经定下来。`null` 表示后端既没有环境变量也没有落盘配置，
+ * 需要问用户要一个——安装版第一次启动就是这种状态。
+ */
+export async function projectsRootStatus(): Promise<string | null> {
+  return invoke<string | null>("projects_root_status");
+}
+
+/** 记下用户选的数据目录。后端会建出来并落盘，返回的路径直接可用。 */
+export async function setProjectsRoot(path: string): Promise<string> {
+  return invoke<string>("set_projects_root", { path });
+}
+
 export async function analyzeSource(
   sourcePath: string,
   projectDir: string,

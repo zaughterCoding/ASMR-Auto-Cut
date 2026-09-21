@@ -11,6 +11,9 @@ interface Props {
   canAnalyze: boolean;
   canSave: boolean;
   canExport: boolean;
+  /** 还没定下数据目录：分析无处落盘，必须先让用户选一个。 */
+  needsDataDir: boolean;
+  onChooseDataDir: () => void;
   review: ReviewLevel;
   onReviewChange: (level: ReviewLevel) => void;
 }
@@ -38,6 +41,8 @@ export function Toolbar({
   canAnalyze,
   canSave,
   canExport,
+  needsDataDir,
+  onChooseDataDir,
   review,
   onReviewChange,
 }: Props) {
@@ -64,7 +69,15 @@ export function Toolbar({
         </select>
         <span className="toolbar-hint">{current?.hint}</span>
       </label>
-      <button type="button" onClick={onAnalyze} disabled={busy || !canAnalyze}>
+      {/* 还没有数据目录时把入口摆在最显眼处，并挡住「分析」——否则用户点了分析
+          才被告知无处落盘，而那时唯一的出路是强杀进程。取消过一次之后这个按钮
+          就是重新打开选择器的入口。 */}
+      {needsDataDir ? (
+        <button type="button" onClick={onChooseDataDir} disabled={busy} className="toolbar-primary">
+          选择数据目录
+        </button>
+      ) : null}
+      <button type="button" onClick={onAnalyze} disabled={busy || !canAnalyze || needsDataDir}>
         分析
       </button>
       <button type="button" onClick={onSave} disabled={busy || !canSave}>
